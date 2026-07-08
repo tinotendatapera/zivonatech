@@ -1,0 +1,4 @@
+allowBuilds:
+  ffmpeg-static: true
+  msw: true
+  sharp: true

@@ -1,0 +1,472 @@
+export type User = {
+  id: string
+  name: string
+  username: string
+  color: string
+  verified?: boolean
+  role: string
+  bio: string
+  location: string
+  followers: number
+  following: number
+  cover: string
+}
+
+export type Post = {
+  id: string
+  authorId: string
+  time: string
+  content: string
+  image?: string
+  tags?: string[]
+  likes: number
+  comments: number
+  shares: number
+  liked?: boolean
+  bookmarked?: boolean
+}
+
+export type Product = {
+  id: string
+  title: string
+  price: number
+  category: string
+  image: string
+  images?: string[]
+  location: string
+  sellerId: string
+  condition: string
+  description: string
+  featured?: boolean
+  saved?: boolean
+  createdAgo: string
+}
+
+export type Conversation = {
+  id: string
+  userId: string
+  lastMessage: string
+  time: string
+  unread: number
+  online: boolean
+}
+
+export type ChatMessage = {
+  id: string
+  conversationId: string
+  fromMe: boolean
+  text?: string
+  image?: string
+  time: string
+}
+
+export type NotificationItem = {
+  id: string
+  type: "like" | "comment" | "follow" | "marketplace" | "message" | "system"
+  userId?: string
+  text: string
+  time: string
+  read: boolean
+}
+
+// Brand gradient palette for initials avatars (kept within brand hues)
+const GRADS = [
+  "from-violet-500 to-indigo-600",
+  "from-blue-500 to-violet-600",
+  "from-emerald-500 to-teal-600",
+  "from-fuchsia-500 to-violet-600",
+  "from-indigo-500 to-blue-600",
+  "from-teal-500 to-emerald-600",
+]
+
+export const users: User[] = [
+  {
+    id: "u1",
+    name: "Tawanda Moyo",
+    username: "tawanda",
+    color: GRADS[0],
+    verified: true,
+    role: "Founder, Harare Studio",
+    bio: "Building beautiful things for Zimbabwe. Designer & creative director. Harare → Bulawayo → the world.",
+    location: "Harare, Zimbabwe",
+    followers: 48200,
+    following: 312,
+    cover: "/images/covers/cover-1.png",
+  },
+  {
+    id: "u2",
+    name: "Kudzai Chigwedere",
+    username: "kudzai",
+    color: GRADS[1],
+    verified: true,
+    role: "Product Engineer",
+    bio: "Shipping software from Bulawayo. Coffee, code, and community.",
+    location: "Bulawayo, Zimbabwe",
+    followers: 12800,
+    following: 540,
+    cover: "/images/covers/cover-2.png",
+  },
+  {
+    id: "u3",
+    name: "Nyasha Moyo",
+    username: "nyasha",
+    color: GRADS[2],
+    role: "Textile Artist",
+    bio: "Handwoven stories. Sustainable fashion from the highveld.",
+    location: "Mutare, Zimbabwe",
+    followers: 89400,
+    following: 201,
+    cover: "/images/covers/cover-3.png",
+  },
+  {
+    id: "u4",
+    name: "Munashe Chirisa",
+    username: "munashe",
+    color: GRADS[3],
+    role: "Music Producer",
+    bio: "Afro-fusion producer & DJ. Making the city dance.",
+    location: "Gweru, Zimbabwe",
+    followers: 230500,
+    following: 88,
+    cover: "/images/covers/cover-1.png",
+  },
+  {
+    id: "u5",
+    name: "Rumbidzai Chikomo",
+    username: "rumbidzai",
+    color: GRADS[4],
+    verified: true,
+    role: "Tech Investor",
+    bio: "Backing Zimbabwean founders. Partner @ Great Zimbabwe Ventures.",
+    location: "Victoria Falls, Zimbabwe",
+    followers: 64100,
+    following: 423,
+    cover: "/images/covers/cover-2.png",
+  },
+  {
+    id: "u6",
+    name: "Tsitsi Mutsvairo",
+    username: "tsitsi",
+    color: GRADS[5],
+    role: "Chef & Creator",
+    bio: "Cooking modern Zimbabwean cuisine. Recipes, restaurants, joy.",
+    location: "Harare, Zimbabwe",
+    followers: 33700,
+    following: 612,
+    cover: "/images/covers/cover-3.png",
+  },
+]
+
+// The signed-in user
+export const currentUser: User = {
+  id: "me",
+  name: "Tinotenda Tapera",
+  username: "taperat",
+  color: "from-violet-600 to-blue-600",
+  verified: true,
+  role: "Owner · Zivona",
+  bio: "Founder, builder, and owner of Zivona. Creating a premium social and marketplace experience for Zimbabwe and beyond.",
+  location: "Harare, Zimbabwe",
+  followers: 15400,
+  following: 388,
+  cover: "/images/covers/cover-1.png",
+}
+
+export function userById(id: string): User {
+  if (id === "me") return currentUser
+  return users.find((u) => u.id === id) ?? users[0]
+}
+
+export const posts: Post[] = [
+  {
+    id: "p1",
+    authorId: "u1",
+    time: "2h",
+    content:
+      "We just shipped the new Zivona design system 🎨 Three years of building toward one ecosystem for the continent. So proud of this team. Create. Connect. Grow.",
+    image: "/images/posts/post-studio.png",
+    tags: ["design", "africa", "startup"],
+    likes: 1240,
+    comments: 86,
+    shares: 42,
+    liked: true,
+  },
+  {
+    id: "p2",
+    authorId: "u3",
+    time: "4h",
+    content:
+      "New handwoven collection drops this weekend on Zivona Marketplace. Every piece tells a story of the artisans behind it. Limited run of 40.",
+    image: "/images/posts/post-textile.png",
+    tags: ["fashion", "handmade"],
+    likes: 3820,
+    comments: 214,
+    shares: 190,
+  },
+  {
+    id: "p3",
+    authorId: "u5",
+    time: "6h",
+    content:
+      "Hot take: the next billion-dollar companies will be built in Harare, Bulawayo and Victoria Falls. The talent has always been here — now the infrastructure is catching up. Bullish on Zimbabwean tech.",
+    tags: ["tech", "investing"],
+    likes: 5610,
+    comments: 432,
+    shares: 301,
+    liked: true,
+  },
+  {
+    id: "p4",
+    authorId: "u4",
+    time: "9h",
+    content:
+      "Studio session was electric last night 🔥 New EP coming. Who's ready?",
+    image: "/images/posts/post-studio-music.png",
+    tags: ["afrobeats", "music"],
+    likes: 18400,
+    comments: 1203,
+    shares: 880,
+  },
+  {
+    id: "p5",
+    authorId: "u6",
+    time: "12h",
+    content:
+      "Sunday sadza, but make it gourmet. Full recipe is on my profile. What are we cooking this week?",
+    image: "/images/posts/post-food.png",
+    tags: ["food", "recipes"],
+    likes: 9230,
+    comments: 540,
+    shares: 410,
+    bookmarked: true,
+  },
+]
+
+export const products: Product[] = [
+  {
+    id: "m1",
+    title: "Handwoven Ankara Tote Bag",
+    price: 45,
+    category: "Fashion",
+    image: "/images/products/tote.png",
+    location: "Harare, ZW",
+    sellerId: "u3",
+    condition: "New",
+    featured: true,
+    createdAgo: "2h",
+    description:
+      "A premium handwoven tote crafted from authentic Shweshwe-inspired fabric. Spacious, durable and one of a kind. Each bag is made to order by artisans in Harare.",
+  },
+  {
+    id: "m2",
+    title: "Wireless Studio Headphones",
+    price: 129,
+    category: "Electronics",
+    image: "/images/products/headphones.png",
+    location: "Bulawayo, ZW",
+    sellerId: "u2",
+    condition: "New",
+    featured: true,
+    createdAgo: "5h",
+    description:
+      "Over-ear wireless headphones with active noise cancellation and 40-hour battery life. Perfect for producers, creators and commuters.",
+  },
+  {
+    id: "m3",
+    title: "Limited Edition Sneakers",
+    price: 89,
+    category: "Fashion",
+    image: "/images/products/sneakers.png",
+    location: "Victoria Falls, ZW",
+    sellerId: "u1",
+    condition: "New",
+    featured: true,
+    createdAgo: "1d",
+    description:
+      "Street-ready sneakers designed in Victoria Falls. Breathable knit upper, cushioned sole, made for the city.",
+  },
+  {
+    id: "m4",
+    title: "Handcrafted Woven Basket",
+    price: 32,
+    category: "Home",
+    image: "/images/products/basket.png",
+    location: "Gweru, ZW",
+    sellerId: "u6",
+    condition: "New",
+    createdAgo: "1d",
+    description:
+      "Traditional handcrafted basket woven from natural fibers. A beautiful, sustainable storage piece for any modern home.",
+  },
+  {
+    id: "m5",
+    title: "Minimalist Smart Watch",
+    price: 159,
+    category: "Electronics",
+    image: "/images/products/watch.png",
+    location: "Harare, ZW",
+    sellerId: "u2",
+    condition: "New",
+    createdAgo: "2d",
+    description:
+      "A sleek smartwatch with health tracking, notifications and a 7-day battery. Premium build, everyday companion.",
+  },
+  {
+    id: "m6",
+    title: "African Print Throw Pillow Set",
+    price: 28,
+    category: "Home",
+    image: "/images/products/pillow.png",
+    location: "Masvingo, ZW",
+    sellerId: "u3",
+    condition: "New",
+    createdAgo: "3d",
+    description:
+      "Set of two vibrant throw pillows featuring bold African prints. Add warmth and character to your living space.",
+  },
+  {
+    id: "m7",
+    title: "Professional Camera Kit",
+    price: 640,
+    category: "Electronics",
+    image: "/images/products/camera.png",
+    location: "Bulawayo, ZW",
+    sellerId: "u4",
+    condition: "Used - Like New",
+    createdAgo: "4d",
+    description:
+      "Mirrorless camera kit including two lenses, bag and accessories. Lightly used, perfect for content creators.",
+  },
+  {
+    id: "m8",
+    title: "Beaded Statement Necklace",
+    price: 38,
+    category: "Fashion",
+    image: "/images/products/necklace.png",
+    location: "Mutare, ZW",
+    sellerId: "u3",
+    condition: "New",
+    createdAgo: "5d",
+    description:
+      "Hand-beaded statement necklace crafted by local artisans. A bold finishing touch for any outfit.",
+  },
+]
+
+export const marketplaceCategories = [
+  "All",
+  "Fashion",
+  "Electronics",
+  "Home",
+  "Beauty",
+  "Art",
+  "Vehicles",
+  "Services",
+]
+
+export function productById(id: string): Product | undefined {
+  return products.find((p) => p.id === id)
+}
+
+export const conversations: Conversation[] = [
+  { id: "c1", userId: "u1", lastMessage: "The mockups look incredible 🔥", time: "2m", unread: 2, online: true },
+  { id: "c2", userId: "u3", lastMessage: "Is the tote bag still available?", time: "18m", unread: 0, online: true },
+  { id: "c3", userId: "u5", lastMessage: "Let's set up a call next week.", time: "1h", unread: 1, online: false },
+  { id: "c4", userId: "u2", lastMessage: "Pushed the fix, can you review?", time: "3h", unread: 0, online: true },
+  { id: "c5", userId: "u4", lastMessage: "Sent you the track 🎧", time: "Yesterday", unread: 0, online: false },
+  { id: "c6", userId: "u6", lastMessage: "Recipe coming your way!", time: "2d", unread: 0, online: false },
+]
+
+export const messagesByConversation: Record<string, ChatMessage[]> = {
+  c1: [
+    { id: "m1", conversationId: "c1", fromMe: false, text: "Hey Ada! Did you get a chance to look at the new feed designs?", time: "10:02" },
+    { id: "m2", conversationId: "c1", fromMe: true, text: "Just opened them — wow.", time: "10:04" },
+    { id: "m3", conversationId: "c1", fromMe: false, text: "The mockups look incredible 🔥", time: "10:05" },
+    { id: "m4", conversationId: "c1", fromMe: false, image: "/images/posts/post-studio.png", time: "10:05" },
+    { id: "m5", conversationId: "c1", fromMe: true, text: "Shipping this Friday. Let's go 🚀", time: "10:07" },
+  ],
+  c2: [
+    { id: "m1", conversationId: "c2", fromMe: false, text: "Hi! Is the tote bag still available?", time: "09:40" },
+    { id: "m2", conversationId: "c2", fromMe: true, text: "Yes it is! Would you like the navy or the gold pattern?", time: "09:42" },
+    { id: "m3", conversationId: "c2", fromMe: false, text: "The gold one please 😍", time: "09:45" },
+  ],
+  c3: [
+    { id: "m1", conversationId: "c3", fromMe: false, text: "Loved your last post on community building.", time: "Mon" },
+    { id: "m2", conversationId: "c3", fromMe: false, text: "Let's set up a call next week.", time: "Mon" },
+  ],
+  c4: [
+    { id: "m1", conversationId: "c4", fromMe: false, text: "Pushed the fix, can you review?", time: "08:15" },
+    { id: "m2", conversationId: "c4", fromMe: true, text: "On it 👀", time: "08:20" },
+  ],
+  c5: [{ id: "m1", conversationId: "c5", fromMe: false, text: "Sent you the track 🎧", time: "Yesterday" }],
+  c6: [{ id: "m1", conversationId: "c6", fromMe: false, text: "Recipe coming your way!", time: "2d" }],
+}
+
+export const notifications: NotificationItem[] = [
+  { id: "n1", type: "like", userId: "u4", text: "liked your post about the design system", time: "5m", read: false },
+  { id: "n2", type: "follow", userId: "u5", text: "started following you", time: "22m", read: false },
+  { id: "n3", type: "comment", userId: "u1", text: 'commented: "This is exactly what the continent needs."', time: "1h", read: false },
+  { id: "n4", type: "marketplace", userId: "u3", text: "is interested in your Handwoven Ankara Tote Bag", time: "3h", read: true },
+  { id: "n5", type: "message", userId: "u2", text: "sent you a message", time: "5h", read: true },
+  { id: "n6", type: "system", text: "Your account is now verified ✓ Welcome to Zivona Blue.", time: "1d", read: true },
+  { id: "n7", type: "like", userId: "u6", text: "and 230 others liked your comment", time: "1d", read: true },
+]
+
+export const stories = [
+  { id: "s0", userId: "me", label: "Your story", isYou: true },
+  { id: "s1", userId: "u1", label: "Amara" },
+  { id: "s2", userId: "u3", label: "Zanele" },
+  { id: "s3", userId: "u4", label: "Tunde" },
+  { id: "s4", userId: "u5", label: "Fatima" },
+  { id: "s5", userId: "u6", label: "Chioma" },
+  { id: "s6", userId: "u2", label: "Kwame" },
+]
+
+export const trendingTopics = [
+  { tag: "#ZimbabweTech", posts: "128K posts" },
+  { tag: "#CreateConnectGrow", posts: "94K posts" },
+  { tag: "#ZimMusic", posts: "512K posts" },
+  { tag: "#MadeInZimbabwe", posts: "76K posts" },
+  { tag: "#StartupHarare", posts: "41K posts" },
+]
+
+export const testimonials = [
+  {
+    id: "t1",
+    name: "Tawanda Moyo",
+    role: "Designer · Harare",
+    quote:
+      "Zivona replaced three apps for me. I post my work, chat with clients, and sell prints all in one place.",
+    avatar: undefined as string | undefined,
+  },
+  {
+    id: "t2",
+    name: "Nyasha Moyo",
+    role: "Maker · Mutare",
+    quote:
+      "My handwoven bags reached buyers across Zimbabwe and beyond. The marketplace just works.",
+    avatar: undefined as string | undefined,
+  },
+  {
+    id: "t3",
+    name: "Kudzai Chigwedere",
+    role: "Producer · Bulawayo",
+    quote:
+      "The community here actually engages. I grew my audience faster on Zivona than anywhere else.",
+    avatar: undefined as string | undefined,
+  },
+]
+
+export function formatCount(n: number): string {
+  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1).replace(/\.0$/, "") + "M"
+  if (n >= 1_000) return (n / 1_000).toFixed(1).replace(/\.0$/, "") + "K"
+  return String(n)
+}
+
+export function initials(name: string): string {
+  return name
+    .split(" ")
+    .map((p) => p[0])
+    .slice(0, 2)
+    .join("")
+    .toUpperCase()
+}
