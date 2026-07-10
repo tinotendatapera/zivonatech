@@ -379,7 +379,16 @@ export default function MessagesPage() {
                       onClick={() => void startConversation(user.id)}
                       className="flex w-full items-center gap-3 rounded-3xl border border-border bg-background p-4 text-left transition hover:bg-muted/40"
                     >
-                      <UserAvatar user={{ id: user.id, name: user.full_name || user.username, username: user.username, avatar_url: user.avatar_url }} size="md" ring />
+                      <UserAvatar
+                        user={{
+                          id: user.id,
+                          name: user.full_name ?? user.username ?? undefined,
+                          username: user.username ?? undefined,
+                          avatar_url: user.avatar_url ?? undefined,
+                        }}
+                        size="md"
+                        ring
+                      />
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-sm font-semibold text-foreground">{user.full_name || 'Zivona User'}</p>
                         <p className="truncate text-xs text-muted-foreground">@{user.username || 'user'}</p>
