@@ -830,7 +830,7 @@ export default function FeedPage() {
       (user?.userMetadata?.name && String(user.userMetadata.name)) ||
       'You',
     username: (user?.userMetadata?.username && String(user.userMetadata.username)) || 'you',
-    avatar_url: user?.userMetadata?.avatar_url ? String(user.userMetadata.avatar_url) : null,
+    avatar_url: user?.userMetadata?.avatar_url ? String(user.userMetadata.avatar_url) : undefined,
     color: 'from-violet-600 to-blue-600',
   }
 
