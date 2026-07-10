@@ -15,6 +15,25 @@ export default function ImageUploader({ images, onChange, maxImages = 5 }: Image
   const [error, setError] = useState('')
   const fileInputRef = useRef<HTMLInputElement>(null)
 
+  async function parseUploadResponse(res: Response) {
+    const contentType = res.headers.get('content-type') || ''
+
+    if (contentType.includes('application/json')) {
+      return await res.json()
+    }
+
+    const body = await res.text()
+    if (body.trim().startsWith('<!DOCTYPE') || body.includes('<html')) {
+      throw new Error(`Upload failed (${res.status})`)
+    }
+
+    try {
+      return JSON.parse(body)
+    } catch {
+      throw new Error(body || `Upload failed (${res.status})`)
+    }
+  }
+
   async function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
     const files = e.target.files
     if (!files || files.length === 0) return
@@ -45,8 +64,8 @@ export default function ImageUploader({ images, onChange, maxImages = 5 }: Image
           body: formData,
         })
 
-        const data = await res.json()
-        if (data.error) throw new Error(data.error)
+        const data = await parseUploadResponse(res)
+        if (!res.ok || data.error) throw new Error(data.error || 'Upload failed')
 
         newImages.push(data.url)
       } catch (err: any) {

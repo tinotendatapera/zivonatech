@@ -20,6 +20,25 @@ export default function StoryCreator({ onStoryCreated }: StoryCreatorProps) {
   const [error, setError] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
+  async function parseUploadResponse(res: Response) {
+    const contentType = res.headers.get('content-type') || ''
+
+    if (contentType.includes('application/json')) {
+      return await res.json()
+    }
+
+    const body = await res.text()
+    if (body.trim().startsWith('<!DOCTYPE') || body.includes('<html')) {
+      throw new Error(`Unable to upload media (${res.status})`)
+    }
+
+    try {
+      return JSON.parse(body)
+    } catch {
+      throw new Error(body || `Unable to upload media (${res.status})`)
+    }
+  }
+
   async function uploadMedia(file: File) {
     const formData = new FormData()
     formData.append('file', file, file.name)
@@ -29,7 +48,7 @@ export default function StoryCreator({ onStoryCreated }: StoryCreatorProps) {
       body: formData,
     })
 
-    const data = await res.json()
+    const data = await parseUploadResponse(res)
     if (!res.ok || data.error) {
       throw new Error(data.error || 'Unable to upload media')
     }
