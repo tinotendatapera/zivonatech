@@ -27,9 +27,9 @@ function ProfilePageContent() {
   const [location, setLocation] = useState('')
   
   const profileUser = useMemo(() => {
-    const resolvedName = displayName || (user?.user_metadata?.full_name ? String(user.user_metadata.full_name) : user?.email || 'User')
-    const resolvedUsername = username || (user?.user_metadata?.username ? String(user.user_metadata.username) : 'user')
-    const resolvedRole = role || (user?.user_metadata?.role ? String(user.user_metadata.role) : 'member')
+    const resolvedName = displayName || (user?.userMetadata?.full_name ? String(user.userMetadata.full_name) : user?.email || 'User')
+    const resolvedUsername = username || (user?.userMetadata?.username ? String(user.userMetadata.username) : 'user')
+    const resolvedRole = role || (user?.userMetadata?.role ? String(user.userMetadata.role) : 'member')
 
     return {
       name: resolvedName,
