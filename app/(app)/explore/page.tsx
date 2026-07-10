@@ -354,6 +354,25 @@ export default function ExplorePage() {
               {search.trim() ? (
                 searchResults.users.length || searchResults.posts.length || searchResults.hashtags.length ? (
                   <div className="space-y-3 text-sm">
+                    {searchResults.users.length > 0 ? (
+                      <div className="space-y-3">
+                        <div className="text-xs uppercase tracking-wide text-muted-foreground">Creators</div>
+                        <div className="space-y-2">
+                          {searchResults.users.slice(0, 4).map((creator) => (
+                            creator?.id ? (
+                              <Link
+                                key={creator.id}
+                                href={`/profile/${creator.id}`}
+                                className="block rounded-2xl border border-border bg-background/70 px-3 py-2 transition hover:border-primary/30 hover:bg-background"
+                              >
+                                <div className="text-sm font-semibold text-foreground">{creator.full_name || creator.username || 'User'}</div>
+                                <div className="text-xs text-muted-foreground">@{creator.username || 'user'}</div>
+                              </Link>
+                            ) : null
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
                     {searchResults.hashtags.length > 0 ? (
                       <div className="flex flex-wrap gap-2">
                         {searchResults.hashtags.slice(0, 8).map((tag) => <Badge key={tag} variant="secondary">{tag}</Badge>)}

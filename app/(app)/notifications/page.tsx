@@ -1,5 +1,6 @@
 "use client"
 
+import Link from "next/link"
 import { useEffect, useMemo, useState } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -136,7 +137,13 @@ export default function NotificationsPage() {
                       </div>
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-2">
-                          <span className="text-sm font-semibold text-foreground">{actor?.full_name || 'Zivona'}</span>
+                          {actor?.id ? (
+                            <Link href={`/profile/${actor.id}`} className="text-sm font-semibold text-foreground transition hover:text-primary">
+                              {actor.full_name || 'Zivona'}
+                            </Link>
+                          ) : (
+                            <span className="text-sm font-semibold text-foreground">{actor?.full_name || 'Zivona'}</span>
+                          )}
                           {actor?.is_verified ? <VerifiedBadge className="size-4" /> : null}
                           <Badge variant={item.is_read ? 'outline' : 'default'} className="rounded-full">{item.type}</Badge>
                           <span className="text-xs text-muted-foreground">{formatRelativeTime(item.created_at)}</span>

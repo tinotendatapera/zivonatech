@@ -66,25 +66,70 @@ async function syncProfileCounts(client: any, profileId: string) {
 
 export async function GET(request: Request) {
   try {
-    const user = await getCurrentUser()
     const { searchParams } = new URL(request.url)
     const type = searchParams.get('type') || 'both'
+    const profileIdQuery = searchParams.get('profile_id') || searchParams.get('user_id')
+    let user: any = null
+
+    if (!profileIdQuery) {
+      user = await getCurrentUser()
+    }
+
+    const targetProfileId = profileIdQuery || user?.id
+    if (!targetProfileId) {
+      return NextResponse.json({ error: 'Unauthorized', following: [], followers: [], counts: { followers: 0, following: 0 } }, { status: 401 })
+    }
 
     if (!supabaseAdmin) {
       return NextResponse.json({ following: [], followers: [], counts: { followers: 0, following: 0 } })
     }
 
     const client = supabaseAdmin.from('follows')
+    const fetchProfiles = async (ids: string[]) => {
+      if (ids.length === 0) return []
+      const { data, error } = await supabaseAdmin!
+        .from('profiles')
+        .select('id, username, full_name, avatar_url, is_verified, role')
+        .in('id', ids)
+
+      if (error) return []
+      return Array.isArray(data) ? data : []
+    }
+
     if (type === 'followers') {
-      const { data, error } = await client.select('follower_id').eq('followed_id', user.id)
+      const { data, error } = await client.select('follower_id').eq('followed_id', targetProfileId)
       if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-      return NextResponse.json({ followers: (data ?? []).map((row: any) => row.follower_id).filter(Boolean) })
+      const ids = (data ?? []).map((row: any) => String(row.follower_id)).filter(Boolean)
+      if (profileIdQuery) {
+        return NextResponse.json({ followers: await fetchProfiles(ids) })
+      }
+      return NextResponse.json({ followers: ids })
     }
 
     if (type === 'following') {
-      const { data, error } = await client.select('followed_id').eq('follower_id', user.id)
+      const { data, error } = await client.select('followed_id').eq('follower_id', targetProfileId)
       if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-      return NextResponse.json({ following: (data ?? []).map((row: any) => row.followed_id).filter(Boolean) })
+      const ids = (data ?? []).map((row: any) => String(row.followed_id)).filter(Boolean)
+      if (profileIdQuery) {
+        return NextResponse.json({ following: await fetchProfiles(ids) })
+      }
+      return NextResponse.json({ following: ids })
+    }
+
+    if (profileIdQuery) {
+      const [followersResponse, followingResponse] = await Promise.all([
+        client.select('follower_id').eq('followed_id', targetProfileId),
+        client.select('followed_id').eq('follower_id', targetProfileId),
+      ])
+
+      const followersIds = (followersResponse.data ?? []).map((row: any) => String(row.follower_id)).filter(Boolean)
+      const followingIds = (followingResponse.data ?? []).map((row: any) => String(row.followed_id)).filter(Boolean)
+
+      return NextResponse.json({
+        followers: await fetchProfiles(followersIds),
+        following: await fetchProfiles(followingIds),
+        counts: await getCounts(supabaseAdmin, targetProfileId),
+      })
     }
 
     const { data, error } = await client.select('*').eq('follower_id', user.id)

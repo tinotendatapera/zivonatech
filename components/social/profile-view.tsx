@@ -2,9 +2,10 @@
 
 import Link from "next/link"
 import { useEffect, useMemo, useState } from "react"
+import { useRouter } from "next/navigation"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent } from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
 import { UserAvatar, VerifiedBadge } from "@/components/user-avatar"
@@ -41,6 +42,7 @@ function formatJoinedDate(value?: string | null) {
 
 export function ProfileView({ userId }: ProfileViewProps) {
   const { user } = useAuth()
+  const router = useRouter()
   const targetUserId = userId || user?.id || ''
   const isOwnProfile = Boolean(user?.id && targetUserId && String(user.id) === String(targetUserId))
 
@@ -49,6 +51,11 @@ export function ProfileView({ userId }: ProfileViewProps) {
   const [posts, setPosts] = useState<SocialPost[]>([])
   const [replies, setReplies] = useState<any[]>([])
   const [likes, setLikes] = useState<SocialPost[]>([])
+  const [followersList, setFollowersList] = useState<ProfileData[]>([])
+  const [followingList, setFollowingList] = useState<ProfileData[]>([])
+  const [relationshipLoading, setRelationshipLoading] = useState(true)
+  const [messageLoading, setMessageLoading] = useState(false)
+  const [messageError, setMessageError] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<'posts' | 'replies' | 'media' | 'likes'>('posts')
   const [editingBio, setEditingBio] = useState(false)
   const [bioDraft, setBioDraft] = useState('')
@@ -60,11 +67,13 @@ export function ProfileView({ userId }: ProfileViewProps) {
 
       setLoading(true)
       try {
-        const [profileRes, postsRes, repliesRes, likesRes] = await Promise.all([
+        const [profileRes, postsRes, repliesRes, likesRes, followersRes, followingRes] = await Promise.all([
           fetch(targetUserId === user?.id || !userId ? '/api/profile' : `/api/profile?id=${encodeURIComponent(targetUserId)}`),
           fetch(`/api/posts?author_id=${encodeURIComponent(targetUserId)}`),
           fetch(`/api/posts/comments?user_id=${encodeURIComponent(targetUserId)}`),
           fetch(`/api/posts?liked_by=${encodeURIComponent(targetUserId)}`),
+          fetch(`/api/follows?type=followers&profile_id=${encodeURIComponent(targetUserId)}`),
+          fetch(`/api/follows?type=following&profile_id=${encodeURIComponent(targetUserId)}`),
         ])
 
         if (profileRes.ok) {
@@ -89,8 +98,23 @@ export function ProfileView({ userId }: ProfileViewProps) {
           const likesData = await likesRes.json().catch(() => ({}))
           setLikes(Array.isArray(likesData.posts) ? likesData.posts : [])
         }
+
+        if (followersRes.ok) {
+          const followersData = await followersRes.json().catch(() => ({}))
+          setFollowersList(Array.isArray(followersData.followers) ? followersData.followers : [])
+        } else {
+          setFollowersList([])
+        }
+
+        if (followingRes.ok) {
+          const followingData = await followingRes.json().catch(() => ({}))
+          setFollowingList(Array.isArray(followingData.following) ? followingData.following : [])
+        } else {
+          setFollowingList([])
+        }
       } finally {
         setLoading(false)
+        setRelationshipLoading(false)
       }
     }
 
@@ -133,6 +157,35 @@ export function ProfileView({ userId }: ProfileViewProps) {
     }
   }
 
+  async function handleStartConversation() {
+    if (isOwnProfile || !targetUserId) return
+
+    setMessageError(null)
+    setMessageLoading(true)
+
+    try {
+      const res = await fetch('/api/conversations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ other_user_id: targetUserId }),
+      })
+
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}))
+        throw new Error(errorData?.error || 'Unable to start conversation')
+      }
+
+      const data = await res.json().catch(() => ({}))
+      if (data.conversation_id) {
+        router.push(`/messages/${data.conversation_id}`)
+      }
+    } catch (error: any) {
+      setMessageError(error?.message || 'Unable to open conversation')
+    } finally {
+      setMessageLoading(false)
+    }
+  }
+
   const mediaPosts = posts.filter((post) => Boolean(post.image_url || post.video_url))
 
   return (
@@ -158,7 +211,11 @@ export function ProfileView({ userId }: ProfileViewProps) {
                 <Button asChild className="rounded-full">
                   <Link href="/edit-profile">Edit Profile</Link>
                 </Button>
-              ) : null}
+              ) : (
+                <Button type="button" className="rounded-full" onClick={() => void handleStartConversation()} disabled={messageLoading}>
+                  {messageLoading ? 'Opening...' : 'Message'}
+                </Button>
+              )}
             </div>
           </div>
 
@@ -228,6 +285,58 @@ export function ProfileView({ userId }: ProfileViewProps) {
           </div>
         </CardContent>
       </Card>
+
+      {messageError ? (
+        <div className="rounded-3xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{messageError}</div>
+      ) : null}
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <Card className="border-border bg-background/70">
+          <CardHeader>
+            <CardTitle className="text-base">Followers</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3 p-4">
+            {relationshipLoading ? (
+              <div className="text-sm text-muted-foreground">Loading followers...</div>
+            ) : followersList.length > 0 ? (
+              followersList.map((follower) => (
+                <Link key={follower.id} href={`/profile/${follower.id}`} className="flex items-center gap-3 rounded-2xl border border-border p-3 transition hover:border-primary/30 hover:bg-background">
+                  <UserAvatar user={{ id: follower.id, name: follower.full_name || follower.username || 'User', username: follower.username || 'user', avatar_url: follower.avatar_url || undefined }} size="sm" ring />
+                  <div>
+                    <div className="text-sm font-semibold text-foreground">{follower.full_name || follower.username || 'Follower'}</div>
+                    <div className="text-xs text-muted-foreground">@{follower.username || 'user'}</div>
+                  </div>
+                </Link>
+              ))
+            ) : (
+              <div className="text-sm text-muted-foreground">No followers yet.</div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card className="border-border bg-background/70">
+          <CardHeader>
+            <CardTitle className="text-base">Following</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3 p-4">
+            {relationshipLoading ? (
+              <div className="text-sm text-muted-foreground">Loading following...</div>
+            ) : followingList.length > 0 ? (
+              followingList.map((following) => (
+                <Link key={following.id} href={`/profile/${following.id}`} className="flex items-center gap-3 rounded-2xl border border-border p-3 transition hover:border-primary/30 hover:bg-background">
+                  <UserAvatar user={{ id: following.id, name: following.full_name || following.username || 'User', username: following.username || 'user', avatar_url: following.avatar_url || undefined }} size="sm" ring />
+                  <div>
+                    <div className="text-sm font-semibold text-foreground">{following.full_name || following.username || 'Following'}</div>
+                    <div className="text-xs text-muted-foreground">@{following.username || 'user'}</div>
+                  </div>
+                </Link>
+              ))
+            ) : (
+              <div className="text-sm text-muted-foreground">Not following anyone yet.</div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
 
       <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as typeof activeTab)} className="space-y-4">
         <TabsList className="grid h-auto grid-cols-4 rounded-full bg-muted p-1">

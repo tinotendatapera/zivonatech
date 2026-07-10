@@ -1,12 +1,13 @@
 "use client"
 
-import { Bell, Lock, MoonStar, ShieldCheck, Smartphone } from "lucide-react"
+import { Bell, Lock, MoonStar, ShieldCheck, Smartphone, Key } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Switch } from "@/components/ui/switch"
 import { useEffect, useMemo, useState } from "react"
 import { useAuth } from "@/components/auth/auth-state"
+import { supabase } from "@/supabase"
 
 export default function SettingsPage() {
   const { user } = useAuth()
@@ -20,6 +21,10 @@ export default function SettingsPage() {
   const [saving, setSaving] = useState(false)
   const [status, setStatus] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  const [password, setPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [passwordStatus, setPasswordStatus] = useState<string | null>(null)
+  const [passwordLoading, setPasswordLoading] = useState(false)
   const [twoFactorState, setTwoFactorState] = useState({
     enabled: false,
     loading: false,
@@ -187,6 +192,34 @@ export default function SettingsPage() {
     }
   }
 
+  async function handleSetPassword() {
+    if (!password.trim()) {
+      setPasswordStatus('Please enter a password.')
+      return
+    }
+    if (password !== confirmPassword) {
+      setPasswordStatus('Passwords do not match.')
+      return
+    }
+
+    setPasswordLoading(true)
+    setPasswordStatus(null)
+
+    try {
+      const { data, error } = await supabase.auth.updateUser({ password })
+      if (error || !data) {
+        throw new Error(error?.message || 'Unable to set password')
+      }
+      setPasswordStatus('Password saved successfully. You can now sign in with email and password.')
+      setPassword('')
+      setConfirmPassword('')
+    } catch (error: any) {
+      setPasswordStatus(error?.message || 'Unable to set password')
+    } finally {
+      setPasswordLoading(false)
+    }
+  }
+
   return (
     <div className="mx-auto flex max-w-5xl flex-col gap-4 px-4 py-4 sm:px-6 lg:px-8">
       <div>
@@ -208,6 +241,44 @@ export default function SettingsPage() {
           </div>
           <div className="rounded-xl border border-border p-3 text-sm text-muted-foreground">
             Your account is verified and ready for public posting.
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Password</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="rounded-xl border border-border p-3">
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Key className="size-4 text-primary" />
+              <span>Set or update a password for your account so you can sign in with email and password in addition to OAuth.</span>
+            </div>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Input
+              id="password"
+              type="password"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              placeholder="New password"
+              disabled={passwordLoading}
+            />
+            <Input
+              id="confirm-password"
+              type="password"
+              value={confirmPassword}
+              onChange={(event) => setConfirmPassword(event.target.value)}
+              placeholder="Confirm password"
+              disabled={passwordLoading}
+            />
+          </div>
+          {passwordStatus ? <div className="rounded-xl border border-border bg-background px-3 py-2 text-sm text-muted-foreground">{passwordStatus}</div> : null}
+          <div className="flex justify-end">
+            <Button className="rounded-full" onClick={handleSetPassword} disabled={passwordLoading || loading}>
+              {passwordLoading ? 'Saving...' : 'Save password'}
+            </Button>
           </div>
         </CardContent>
       </Card>
