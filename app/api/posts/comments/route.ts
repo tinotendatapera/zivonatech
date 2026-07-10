@@ -93,6 +93,10 @@ export async function GET(request: Request) {
     })
   }
 
+  if (!postId) {
+    return NextResponse.json({ error: 'Missing post_id' }, { status: 400 })
+  }
+
   const fallbackComments = await getFallbackComments(postId)
   const sortComments = (comments: any[]) => {
     const normalized = [...comments]
