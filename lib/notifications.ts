@@ -20,6 +20,9 @@ export async function createNotification({
   const insertPayload: Record<string, any> = {
     user_id: userId,
     type,
+    title: title ?? null,
+    body,
+    payload: payload ?? {},
     is_read: false,
     created_at: new Date().toISOString(),
   }

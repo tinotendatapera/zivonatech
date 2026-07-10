@@ -132,7 +132,7 @@ export async function POST(request: Request) {
         type: 'follow',
         title: 'New follower',
         body: 'Someone started following you.',
-        payload: { followerId: user.id },
+        payload: { actorId: user.id, followerId: user.id },
       }).catch(() => undefined)
     }
 

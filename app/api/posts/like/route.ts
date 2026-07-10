@@ -246,7 +246,7 @@ export async function POST(request: Request) {
         type: 'like',
         title: 'New like',
         body: 'Someone liked your content.',
-        payload: { targetType: comment_id ? 'comment' : 'post', targetId },
+        payload: { actorId: normalizedUserId, targetType: comment_id ? 'comment' : 'post', targetId },
       }).catch(() => undefined)
     }
     return NextResponse.json({ liked: true, likes_count: fallbackCount + (insertError ? 0 : 1) })

@@ -173,8 +173,8 @@ export async function GET(request: Request) {
   }
 
   let profileQuery = dbClient
-    .from('profiles')
-    .select('id, username, full_name, email, avatar_url, cover_url, bio, location, role, is_verified')
+  .from('profiles')
+  .select('id, username, full_name, email, avatar_url, cover_url, bio, location, role, is_verified, created_at')
 
   if (requestedProfileId) {
     profileQuery = profileQuery.eq('id', requestedProfileId)
@@ -285,7 +285,7 @@ export async function PUT(request: Request) {
       },
       { onConflict: 'id' }
     )
-    .select('id, username, full_name, email, avatar_url, cover_url, bio, location, role, is_verified')
+    .select('id, username, full_name, email, avatar_url, cover_url, bio, location, role, is_verified, created_at')
     .single()
 
   if (error) {

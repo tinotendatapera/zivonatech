@@ -92,6 +92,24 @@ function normalizeNotificationType(type: string) {
   }
 }
 
+function extractActorIds(notification: Record<string, any>) {
+  const payload = notification?.payload && typeof notification.payload === 'object' ? notification.payload : {}
+  return [
+    payload.actorId,
+    payload.actor_id,
+    payload.followerId,
+    payload.follower_id,
+    payload.senderId,
+    payload.sender_id,
+    payload.commenterId,
+    payload.commenter_id,
+    payload.userId,
+    payload.user_id,
+  ]
+    .map((value) => (value ? String(value) : ''))
+    .filter(Boolean)
+}
+
 export async function GET() {
   try {
     const user = await getCurrentUser()
@@ -105,13 +123,33 @@ export async function GET() {
     if (supabaseAdmin) {
       const { data, error } = await supabaseAdmin
         .from('notifications')
-        .select('id, user_id, type, is_read, created_at')
+        .select('id, user_id, type, title, body, payload, is_read, created_at')
         .eq('user_id', user.id)
         .order('created_at', { ascending: false })
         .limit(50)
 
       if (!error) {
-        notifications = data ?? []
+        const rows = data ?? []
+        const actorIds = Array.from(new Set(rows.flatMap((notification: any) => extractActorIds(notification))))
+        const actorMap = new Map<string, any>()
+
+        if (actorIds.length > 0) {
+          const { data: profiles } = await supabaseAdmin
+            .from('profiles')
+            .select('id, username, full_name, avatar_url, is_verified')
+            .in('id', actorIds)
+
+          profiles?.forEach((profile: any) => actorMap.set(profile.id, profile))
+        }
+
+        notifications = rows.map((notification: any) => {
+          const actorId = extractActorIds(notification)[0]
+          const actor = actorId ? actorMap.get(actorId) : null
+          return {
+            ...notification,
+            actor,
+          }
+        })
       }
     }
 

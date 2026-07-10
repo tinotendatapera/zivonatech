@@ -34,10 +34,16 @@ async function createSupabaseServerClient(cookieStore?: Awaited<ReturnType<typeo
 }
 
 // GET all posts
-export async function GET() {
-  const cachedPosts = await getCachedValue<any[]>('posts:feed:latest')
-  if (cachedPosts) {
-    return NextResponse.json({ posts: cachedPosts })
+export async function GET(request: Request) {
+  const url = new URL(request.url)
+  const authorId = url.searchParams.get('author_id') || url.searchParams.get('user_id')
+  const likedBy = url.searchParams.get('liked_by')
+
+  if (!authorId && !likedBy) {
+    const cachedPosts = await getCachedValue<any[]>('posts:feed:latest')
+    if (cachedPosts) {
+      return NextResponse.json({ posts: cachedPosts })
+    }
   }
 
   if (!supabaseAdmin) {
@@ -47,8 +53,26 @@ export async function GET() {
   const currentUser = await getAuthenticatedUser()
   const userId = currentUser?.id
 
-  const [postsResult, groupPostsResult] = await Promise.all([
-    supabaseAdmin
+  const blockedUserIds = new Set<string>(await getBlockedUserIds(userId))
+
+  if (likedBy) {
+    const { data: likedRows, error: likedError } = await supabaseAdmin
+      .from('likes')
+      .select('post_id, created_at')
+      .eq('user_id', likedBy)
+      .not('post_id', 'is', null)
+      .order('created_at', { ascending: false })
+
+    if (likedError) {
+      return NextResponse.json({ error: likedError.message }, { status: 500 })
+    }
+
+    const postIds = (likedRows ?? []).map((row: any) => row.post_id).filter(Boolean)
+    if (postIds.length === 0) {
+      return NextResponse.json({ posts: [] })
+    }
+
+    const { data: posts, error } = await supabaseAdmin
       .from('posts')
       .select(`
         *,
@@ -60,68 +84,98 @@ export async function GET() {
           is_verified
         )
       `)
-      .order('created_at', { ascending: false })
-      .limit(50),
-    userId
-      ? supabaseAdmin
-          .from('group_members')
-          .select('group_id')
-          .eq('user_id', userId)
-          .eq('status', 'active')
-      : null,
-  ])
+      .in('id', postIds)
 
-  const { data: posts, error } = postsResult
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 })
+    }
+
+    const ordered = (likedRows ?? [])
+      .map((likedRow: any) => (posts ?? []).find((post: any) => String(post.id) === String(likedRow.post_id)))
+      .filter((post: any) => post && !blockedUserIds.has(String(post.user_id)))
+      .map((post: any) => ({
+        ...post,
+        views_count: post.views_count ?? post.view_count ?? 0,
+        likes_count: post.likes_count ?? 0,
+        comments_count: post.comments_count ?? 0,
+      }))
+
+    return NextResponse.json({ posts: ordered })
+  }
+
+  const { data: posts, error } = await supabaseAdmin
+    .from('posts')
+    .select(`
+      *,
+      profiles (
+        id,
+        username,
+        full_name,
+        avatar_url,
+        is_verified
+      )
+    `)
+    .order('created_at', { ascending: false })
+    .limit(50)
+
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
-  const memberships = groupPostsResult?.data ?? []
-  const groupIds = memberships.map((membership: any) => membership.group_id).filter(Boolean)
-  const blockedUserIds = new Set<string>(await getBlockedUserIds(userId))
-  let groupPosts: any[] = []
-
-  if (groupIds.length > 0) {
-    const { data: groupPostsData } = await supabaseAdmin
-      .from('group_posts')
-      .select(`
-        *,
-        profiles (
-          id,
-          username,
-          full_name,
-          avatar_url,
-          is_verified
-        ),
-        groups (id, name, slug, privacy)
-      `)
-      .in('group_id', groupIds)
-      .order('created_at', { ascending: false })
-      .limit(50)
-
-    groupPosts = (groupPostsData ?? []).map((post: any) => ({
-      ...post,
-      group_post: true,
-      views_count: 0,
-      likes_count: 0,
-      comments_count: 0,
-    }))
-  }
-
-  const postsWithCounts = (posts ?? []).map((post: any) => ({
+  let filteredPosts = (posts ?? []).map((post: any) => ({
     ...post,
     views_count: post.views_count ?? post.view_count ?? 0,
     likes_count: post.likes_count ?? 0,
     comments_count: post.comments_count ?? 0,
   }))
 
-  const combinedPosts = [...postsWithCounts, ...groupPosts]
-    .filter((post: any) => !blockedUserIds.has(String(post.user_id)))
-    .sort((left, right) => (right.created_at || '').localeCompare(left.created_at || ''))
+  if (authorId) {
+    filteredPosts = filteredPosts.filter((post: any) => String(post.user_id) === String(authorId))
+  } else {
+    const memberships = userId
+      ? (await supabaseAdmin
+          .from('group_members')
+          .select('group_id')
+          .eq('user_id', userId)
+          .eq('status', 'active')).data ?? []
+      : []
+    const groupIds = memberships.map((membership: any) => membership.group_id).filter(Boolean)
+    let groupPosts: any[] = []
 
-  await setCachedValue('posts:feed:latest', combinedPosts, 45_000)
+    if (groupIds.length > 0) {
+      const { data: groupPostsData } = await supabaseAdmin
+        .from('group_posts')
+        .select(`
+          *,
+          profiles (
+            id,
+            username,
+            full_name,
+            avatar_url,
+            is_verified
+          ),
+          groups (id, name, slug, privacy)
+        `)
+        .in('group_id', groupIds)
+        .order('created_at', { ascending: false })
+        .limit(50)
 
-  return NextResponse.json({ posts: combinedPosts })
+      groupPosts = (groupPostsData ?? []).map((post: any) => ({
+        ...post,
+        group_post: true,
+        views_count: 0,
+        likes_count: 0,
+        comments_count: 0,
+      }))
+    }
+
+    filteredPosts = [...filteredPosts.filter((post: any) => !blockedUserIds.has(String(post.user_id))), ...groupPosts]
+      .sort((left, right) => (right.created_at || '').localeCompare(left.created_at || ''))
+
+    await setCachedValue('posts:feed:latest', filteredPosts, 45_000)
+  }
+
+  return NextResponse.json({ posts: filteredPosts })
 }
 
 // CREATE a post

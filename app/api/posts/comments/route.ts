@@ -48,12 +48,49 @@ async function authenticateUser(supabase: Awaited<ReturnType<typeof createSupaba
 export async function GET(request: Request) {
   const url = new URL(request.url)
   const postId = url.searchParams.get('post_id')
+  const userId = url.searchParams.get('user_id')
   const sort = url.searchParams.get('sort') === 'top' ? 'top' : 'recent'
   const page = Math.max(1, Number(url.searchParams.get('page') || 1))
   const limit = Math.min(100, Math.max(10, Number(url.searchParams.get('limit') || 50)))
 
-  if (!postId) {
-    return NextResponse.json({ error: 'Missing post_id' }, { status: 400 })
+  if (!postId && !userId) {
+    return NextResponse.json({ error: 'Missing post_id or user_id' }, { status: 400 })
+  }
+
+  if (userId && !supabaseAdmin) {
+    return NextResponse.json({ comments: [] })
+  }
+
+  if (userId && supabaseAdmin) {
+    const { data, error } = await supabaseAdmin
+      .from('comments')
+      .select(`
+        *,
+        profiles (
+          id,
+          username,
+          full_name,
+          avatar_url,
+          is_verified
+        )
+      `)
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false })
+      .limit(limit)
+
+    if (error) {
+      return NextResponse.json({ comments: [], error: error.message }, { status: 500 })
+    }
+
+    return NextResponse.json({
+      comments: data ?? [],
+      pagination: {
+        page: 1,
+        limit,
+        total: (data ?? []).length,
+        hasMore: false,
+      },
+    })
   }
 
   const fallbackComments = await getFallbackComments(postId)
@@ -248,7 +285,7 @@ export async function POST(request: Request) {
       type: 'comment',
       title: 'New comment',
       body: 'Someone commented on your post.',
-      payload: { postId: post_id },
+      payload: { actorId: user.id, postId: post_id },
     }).catch(() => undefined)
   }
 

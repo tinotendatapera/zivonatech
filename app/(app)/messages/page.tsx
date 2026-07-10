@@ -1,100 +1,142 @@
-'use client'
+"use client"
 
-import { useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useEffect, useMemo, useRef, useState } from "react"
+import { useRouter } from "next/navigation"
+import { ArrowLeft, MessageCircle, Search, Send, Plus, Clock3 } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Input } from "@/components/ui/input"
+import { UserAvatar } from "@/components/user-avatar"
+
+type Profile = {
+  id: string
+  username?: string | null
+  full_name?: string | null
+  avatar_url?: string | null
+}
 
 export default function MessagesPage() {
   const router = useRouter()
   const [conversations, setConversations] = useState<any[]>([])
-  const [suggestedUsers, setSuggestedUsers] = useState<any[]>([])
-  const [loading, setLoading] = useState(true)
+  const [suggestedUsers, setSuggestedUsers] = useState<Profile[]>([])
   const [currentUserId, setCurrentUserId] = useState('')
+  const [loadingConversations, setLoadingConversations] = useState(true)
+  const [loadingThread, setLoadingThread] = useState(false)
+  const [selectedConversationId, setSelectedConversationId] = useState<string | null>(null)
+  const [threadMessages, setThreadMessages] = useState<any[]>([])
+  const [threadConversation, setThreadConversation] = useState<any>(null)
+  const [composeMode, setComposeMode] = useState(false)
+  const [search, setSearch] = useState('')
+  const [messageDraft, setMessageDraft] = useState('')
+  const messagesEndRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     let isMounted = true
 
-    async function init() {
+    async function loadData() {
       try {
         const [conversationsRes, profilesRes] = await Promise.all([
           fetch('/api/conversations'),
-          fetch('/api/profiles')
+          fetch('/api/profiles'),
         ])
 
-        // Check response status before trying to parse JSON
-        if (!conversationsRes.ok) {
-          console.error('Conversations API error:', conversationsRes.status, conversationsRes.statusText)
-          setConversations([])
-        } else {
-          try {
-            const conversationsData = await conversationsRes.json()
-            if (isMounted) {
-              setCurrentUserId(conversationsData.user_id || '')
-              const convos = conversationsData.conversations || []
-              setConversations(convos)
-            }
-          } catch (parseError) {
-            console.error('Error parsing conversations JSON:', parseError)
-            setConversations([])
+        if (conversationsRes.ok) {
+          const data = await conversationsRes.json().catch(() => ({}))
+          if (isMounted) {
+            setCurrentUserId(data.user_id || '')
+            setConversations(Array.isArray(data.conversations) ? data.conversations : [])
           }
         }
 
-        if (!profilesRes.ok) {
-          console.error('Profiles API error:', profilesRes.status, profilesRes.statusText)
-          setSuggestedUsers([])
-        } else {
-          try {
-            const profilesData = await profilesRes.json()
-            if (isMounted) {
-              setSuggestedUsers(profilesData.profiles || [])
-            }
-          } catch (parseError) {
-            console.error('Error parsing profiles JSON:', parseError)
-            setSuggestedUsers([])
+        if (profilesRes.ok) {
+          const data = await profilesRes.json().catch(() => ({}))
+          if (isMounted) {
+            setSuggestedUsers(Array.isArray(data.profiles) ? data.profiles : [])
           }
         }
       } catch (error) {
-        console.error('Error fetching conversations/profiles:', error)
+        console.error('Error loading messages data:', error)
       } finally {
         if (isMounted) {
-          setLoading(false)
+          setLoadingConversations(false)
         }
       }
     }
 
-    init()
+    void loadData()
 
     return () => {
       isMounted = false
     }
   }, [])
 
-  async function fetchConversations() {
-    try {
-      const res = await fetch('/api/conversations')
-      if (!res.ok) {
-        console.error('Conversations API error:', res.status, res.statusText)
-        setConversations([])
-        return
-      }
-
-      try {
-        const data = await res.json()
-        setCurrentUserId(data.user_id || '')
-        setConversations(data.conversations || [])
-      } catch (parseError) {
-        console.error('Error parsing conversations JSON:', parseError)
-        setConversations([])
-      }
-    } catch (error) {
-      console.error('Error fetching conversations:', error)
-      setConversations([])
-    } finally {
-      setLoading(false)
+  useEffect(() => {
+    if (!selectedConversationId) {
+      setThreadMessages([])
+      setThreadConversation(null)
+      return
     }
-  }
 
-  function getOtherUser(convo: any) {
-    return convo.participant_1 === currentUserId
+    async function loadThread() {
+      setLoadingThread(true)
+      try {
+        const res = await fetch(`/api/messages/${selectedConversationId}`)
+        if (!res.ok) {
+          if (res.status === 401) {
+            router.push('/login')
+          }
+          return
+        }
+
+        const data = await res.json().catch(() => ({}))
+        setThreadMessages(Array.isArray(data.messages) ? data.messages : [])
+        setThreadConversation(data.conversation || null)
+        setCurrentUserId(data.user_id || currentUserId)
+      } catch (error) {
+        console.error('Error loading conversation thread:', error)
+      } finally {
+        setLoadingThread(false)
+      }
+    }
+
+    void loadThread()
+  }, [currentUserId, router, selectedConversationId])
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [threadMessages])
+
+  const filteredConversations = useMemo(() => {
+    const query = search.trim().toLowerCase()
+    return conversations.filter((conversation) => {
+      const otherUser = getOtherUser(conversation, currentUserId)
+      const haystack = `${otherUser?.full_name || ''} ${otherUser?.username || ''} ${conversation.last_message || ''}`.toLowerCase()
+      return !query || haystack.includes(query)
+    })
+  }, [conversations, currentUserId, search])
+
+  const selectableUsers = useMemo(() => {
+    const conversationParticipants = new Set<string>()
+    conversations.forEach((conversation) => {
+      if (conversation.participant_1) conversationParticipants.add(String(conversation.participant_1))
+      if (conversation.participant_2) conversationParticipants.add(String(conversation.participant_2))
+    })
+
+    const query = search.trim().toLowerCase()
+    return suggestedUsers
+      .filter((user) => String(user.id) !== String(currentUserId))
+      .filter((user) => !conversationParticipants.has(String(user.id)))
+      .filter((user) => {
+        if (!query) return true
+        const haystack = `${user.full_name || ''} ${user.username || ''}`.toLowerCase()
+        return haystack.includes(query)
+      })
+      .slice(0, 12)
+  }, [conversations, currentUserId, search, suggestedUsers])
+
+  function getOtherUser(convo: any, viewerId = currentUserId) {
+    if (!convo) return null
+    return String(convo.participant_1) === String(viewerId)
       ? convo.participant_2_profile
       : convo.participant_1_profile
   }
@@ -108,163 +150,266 @@ export default function MessagesPage() {
       .toUpperCase()
   }
 
-  function getPresenceMeta(otherUser: any) {
-    // Real presence from database - updated in real-time via user_presence table
-    const isOnline = Boolean(otherUser?.is_online)
-    return {
-      isOnline,
-      statusLabel: isOnline ? 'Online now' : 'Active recently',
-      dotClass: isOnline ? 'bg-emerald-400' : 'bg-zinc-500',
-    }
+  function getConversationTime(value?: string | null) {
+    if (!value) return ''
+    const date = new Date(value)
+    if (Number.isNaN(date.getTime())) return ''
+    const minutes = Math.max(1, Math.floor((Date.now() - date.getTime()) / 60_000))
+    if (minutes < 60) return `${minutes}m`
+    const hours = Math.floor(minutes / 60)
+    if (hours < 24) return `${hours}h`
+    return `${Math.floor(hours / 24)}d`
   }
 
-  async function handleStartConversation(userId: string) {
+  async function loadConversationThread(conversationId: string) {
+    setComposeMode(false)
+    setSelectedConversationId(conversationId)
+  }
+
+  async function startConversation(userId: string) {
     try {
       const res = await fetch('/api/conversations', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ other_user_id: userId })
+        body: JSON.stringify({ other_user_id: userId }),
       })
 
       if (!res.ok) {
-        console.error('Error starting conversation:', res.status, res.statusText)
-        const errorData = await res.json().catch(() => null)
+        const errorData = await res.json().catch(() => ({}))
         throw new Error(errorData?.error || 'Unable to start conversation')
       }
 
-      const data = await res.json()
+      const data = await res.json().catch(() => ({}))
       if (data.conversation_id) {
-        router.push(`/messages/${data.conversation_id}`)
+        setComposeMode(false)
+        setSelectedConversationId(data.conversation_id)
+        await refreshConversations()
       }
     } catch (error) {
       console.error('Error starting conversation:', error)
     }
   }
 
-  return (
-    <div className="min-h-screen bg-[#070707] text-white">
-      <nav className="fixed top-0 left-0 right-0 z-50 border-b border-zinc-800/80 bg-black/85 px-4 py-3 backdrop-blur">
-        <div className="mx-auto flex max-w-2xl items-center justify-between">
-          <div>
-            <p className="text-xs uppercase tracking-[0.3em] text-zinc-500">Messages</p>
-            <h1 className="text-xl font-semibold text-purple-400">Inbox</h1>
-          </div>
-          <div className="rounded-full border border-zinc-800 bg-zinc-900/80 px-3 py-1 text-xs text-zinc-400">
-            {conversations.length} chats
-          </div>
-        </div>
-      </nav>
+  async function refreshConversations() {
+    try {
+      const res = await fetch('/api/conversations')
+      if (!res.ok) return
 
-      <div className="mx-auto max-w-2xl space-y-6 px-4 pb-10 pt-24">
-        <section className="overflow-hidden rounded-[24px] border border-zinc-800 bg-zinc-950/90 shadow-[0_0_0_1px_rgba(255,255,255,0.03)]">
-          <div className="border-b border-zinc-800/80 bg-zinc-900/70 px-4 py-4">
+      const data = await res.json().catch(() => ({}))
+      setCurrentUserId(data.user_id || currentUserId)
+      setConversations(Array.isArray(data.conversations) ? data.conversations : [])
+    } catch (error) {
+      console.error('Error refreshing conversations:', error)
+    }
+  }
+
+  async function handleSend() {
+    if (!selectedConversationId || !messageDraft.trim()) return
+
+    const content = messageDraft.trim()
+    setMessageDraft('')
+
+    try {
+      const res = await fetch(`/api/messages/${selectedConversationId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content }),
+      })
+
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}))
+        throw new Error(errorData?.error || 'Unable to send message')
+      }
+
+      await refreshConversations()
+      const updated = await fetch(`/api/messages/${selectedConversationId}`)
+      if (updated.ok) {
+        const data = await updated.json().catch(() => ({}))
+        setThreadMessages(Array.isArray(data.messages) ? data.messages : [])
+        setThreadConversation(data.conversation || null)
+      }
+    } catch (error) {
+      console.error('Error sending message:', error)
+      setMessageDraft(content)
+    }
+  }
+
+  function handleKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {
+    if (event.key === 'Enter' && !event.shiftKey) {
+      event.preventDefault()
+      void handleSend()
+    }
+  }
+
+  const selectedConversation = selectedConversationId
+    ? filteredConversations.find((conversation) => String(conversation.id) === String(selectedConversationId)) || conversations.find((conversation) => String(conversation.id) === String(selectedConversationId))
+    : null
+  const activeOtherUser = getOtherUser(threadConversation || selectedConversation, currentUserId)
+
+  return (
+    <div className="mx-auto min-h-[calc(100vh-4rem)] max-w-7xl px-4 py-4 sm:px-6 lg:px-8">
+      <div className="grid gap-6 xl:grid-cols-[360px_minmax(0,1fr)]">
+        <Card className="border-border bg-background/80 shadow-sm">
+          <CardHeader className="space-y-4 border-b border-border pb-4">
             <div className="flex items-center justify-between gap-3">
               <div>
-                <h2 className="text-sm font-semibold text-white">Start a new conversation</h2>
-                <p className="text-xs text-zinc-500">Message followers, sellers, and creators who are available now.</p>
+                <CardTitle className="text-xl tracking-tight">Messages</CardTitle>
+                <p className="text-sm text-muted-foreground">Your live conversations and new chat suggestions.</p>
               </div>
+              <Button variant="outline" className="rounded-full" onClick={() => setComposeMode((value) => !value)}>
+                <Plus className="size-4" />
+                New chat
+              </Button>
             </div>
-          </div>
-          <div className="grid gap-3 p-4 sm:grid-cols-2">
-            {suggestedUsers.length === 0 ? (
-              <div className="sm:col-span-2 rounded-2xl border border-dashed border-zinc-800 bg-zinc-900/60 p-4 text-sm text-zinc-500">
-                No other profiles are available yet. New users will appear here once they’re stored in the database.
+            <div className="flex items-center gap-2 rounded-full border border-border bg-background px-3 py-2">
+              <Search className="size-4 text-muted-foreground" />
+              <Input
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Search conversations or people"
+                className="h-8 border-0 bg-transparent px-0 shadow-none"
+              />
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-3 p-3">
+            {loadingConversations ? (
+              <div className="py-8 text-center text-sm text-muted-foreground">Loading conversations...</div>
+            ) : filteredConversations.length > 0 ? (
+              filteredConversations.map((conversation) => {
+                const otherUser = getOtherUser(conversation)
+                const isSelected = String(conversation.id) === String(selectedConversationId)
+                return (
+                  <button
+                    key={conversation.id}
+                    onClick={() => void loadConversationThread(conversation.id)}
+                    className={`flex w-full items-center gap-3 rounded-3xl border p-3 text-left transition ${isSelected ? 'border-primary/30 bg-primary/5' : 'border-border bg-background hover:bg-muted/40'}`}
+                  >
+                    <UserAvatar user={{ id: otherUser?.id, name: otherUser?.full_name, username: otherUser?.username, avatar_url: otherUser?.avatar_url }} size="md" ring />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="truncate text-sm font-semibold text-foreground">{otherUser?.full_name || 'Zivona User'}</p>
+                        <span className="shrink-0 text-xs text-muted-foreground">{getConversationTime(conversation.last_message_at)}</span>
+                      </div>
+                      <p className="truncate text-sm text-muted-foreground">{conversation.last_message || 'No messages yet'}</p>
+                    </div>
+                  </button>
+                )
+              })
+            ) : (
+              <div className="rounded-3xl border border-dashed border-border bg-background/60 p-6 text-center text-sm text-muted-foreground">
+                No conversations yet. Start one with a real user.
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card className="border-border bg-background/80 shadow-sm">
+          <CardHeader className="border-b border-border pb-4">
+            {selectedConversationId ? (
+              <div className="flex items-center gap-3">
+                <Button variant="ghost" size="icon" className="rounded-full xl:hidden" onClick={() => setSelectedConversationId(null)}>
+                  <ArrowLeft className="size-4" />
+                </Button>
+                <UserAvatar user={{ id: activeOtherUser?.id, name: activeOtherUser?.full_name, username: activeOtherUser?.username, avatar_url: activeOtherUser?.avatar_url }} size="md" ring />
+                <div>
+                  <CardTitle className="text-lg">{activeOtherUser?.full_name || 'Conversation'}</CardTitle>
+                  <p className="text-sm text-muted-foreground">@{activeOtherUser?.username || 'user'}</p>
+                </div>
+              </div>
+            ) : composeMode ? (
+              <div>
+                <CardTitle className="text-lg">Start Conversation</CardTitle>
+                <p className="text-sm text-muted-foreground">Choose from existing users stored in the database.</p>
               </div>
             ) : (
-              suggestedUsers.slice(0, 4).map((user) => (
-                <div key={user.id} className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-4 shadow-sm">
-                  <div className="flex items-center gap-3">
-                    {user.avatar_url ? (
-                      <img src={user.avatar_url} alt={user.full_name || user.username} className="h-11 w-11 rounded-full object-cover" />
-                    ) : (
-                      <div className="flex h-11 w-11 items-center justify-center rounded-full bg-gradient-to-br from-purple-500 to-fuchsia-600 text-sm font-bold text-white">
-                        {getInitials(user.full_name || user.username)}
-                      </div>
-                    )}
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-semibold text-white">{user.full_name || user.username}</p>
-                      <p className="truncate text-xs text-zinc-500">@{user.username}</p>
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => handleStartConversation(user.id)}
-                    className="mt-4 w-full rounded-full border border-purple-600/60 bg-purple-600/10 px-3 py-2 text-sm text-purple-300 transition hover:bg-purple-600/20"
-                  >
-                    Start chat
-                  </button>
-                </div>
-              ))
-            )}
-          </div>
-        </section>
-
-        {loading ? (
-          <div className="space-y-3">
-            {[1, 2, 3].map((i) => (
-              <div key={i} className="flex items-center gap-3 p-3 animate-pulse">
-                <div className="w-12 h-12 rounded-full bg-zinc-800" />
-                <div className="flex-1 space-y-2">
-                  <div className="h-3 bg-zinc-800 rounded w-1/3" />
-                  <div className="h-3 bg-zinc-800 rounded w-2/3" />
-                </div>
+              <div>
+                <CardTitle className="text-lg">Start Conversation</CardTitle>
+                <p className="text-sm text-muted-foreground">Select a chat on the left or start a new one with a real user.</p>
               </div>
-            ))}
-          </div>
-        ) : conversations.length === 0 ? (
-          <div className="text-center py-20">
-            <p className="text-zinc-500 text-lg">No messages yet.</p>
-            <p className="text-zinc-600 text-sm mt-1">Choose a creator above to start your first chat.</p>
-          </div>
-        ) : (
-          <div className="overflow-hidden rounded-[24px] border border-zinc-800 bg-zinc-950/90 shadow-[0_0_0_1px_rgba(255,255,255,0.03)]">
-            <div className="border-b border-zinc-800/80 bg-zinc-900/70 px-4 py-3">
-              <p className="text-sm font-semibold text-white">Recent chats</p>
-              <p className="text-xs text-zinc-500">Your conversations with friends and creators</p>
-            </div>
-            <div className="divide-y divide-zinc-800/80">
-              {conversations.map((convo) => {
-              const otherUser = getOtherUser(convo)
-              const { isOnline, statusLabel, dotClass } = getPresenceMeta(otherUser)
-              return (
-                <button
-                  key={convo.id}
-                  onClick={() => router.push(`/messages/${convo.id}`)}
-                  className="flex w-full items-center gap-3 bg-zinc-950/60 p-4 text-left transition hover:bg-zinc-900"
-                >
-                  <div className="relative flex-shrink-0">
-                    {otherUser?.avatar_url ? (
-                      <img
-                        src={otherUser.avatar_url}
-                        alt={otherUser?.full_name || 'User'}
-                        className="h-12 w-12 rounded-full object-cover"
-                      />
-                    ) : (
-                      <div className="flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br from-purple-500 to-fuchsia-600 text-sm font-semibold text-white">
-                        {getInitials(otherUser?.full_name)}
+            )}
+          </CardHeader>
+
+          <CardContent className="flex min-h-[520px] flex-col p-4">
+            {selectedConversationId ? (
+              <>
+                <div className="flex-1 space-y-3 overflow-y-auto pr-1">
+                  {loadingThread ? (
+                    <div className="flex h-full items-center justify-center py-24 text-sm text-muted-foreground">Loading thread...</div>
+                  ) : threadMessages.length > 0 ? (
+                    threadMessages.map((message) => {
+                      const isMine = String(message.sender_id) === String(currentUserId)
+                      return (
+                        <div key={message.id} className={`flex ${isMine ? 'justify-end' : 'justify-start'}`}>
+                          <div className={`max-w-[78%] rounded-3xl px-4 py-3 text-sm shadow-sm ${isMine ? 'rounded-br-md bg-primary text-primary-foreground' : 'rounded-bl-md border border-border bg-background text-foreground'}`}>
+                            <div className="leading-6">{message.content}</div>
+                            <div className={`mt-1 text-[11px] ${isMine ? 'text-primary-foreground/75' : 'text-muted-foreground'}`}>
+                              {message.created_at ? new Date(message.created_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : ''}
+                            </div>
+                          </div>
+                        </div>
+                      )
+                    })
+                  ) : (
+                    <div className="flex h-full items-center justify-center py-24 text-sm text-muted-foreground">No messages yet. Say hello.</div>
+                  )}
+                  <div ref={messagesEndRef} />
+                </div>
+
+                <div className="mt-4 border-t border-border pt-4">
+                  <div className="flex items-center gap-2 rounded-full border border-border bg-background p-2">
+                    <input
+                      value={messageDraft}
+                      onChange={(event) => setMessageDraft(event.target.value)}
+                      onKeyDown={handleKeyDown}
+                      placeholder="Type a message..."
+                      className="flex-1 rounded-full bg-transparent px-4 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none"
+                    />
+                    <Button onClick={() => void handleSend()} disabled={!messageDraft.trim()} className="h-11 w-11 rounded-full px-0">
+                      <Send className="size-4" />
+                    </Button>
+                  </div>
+                </div>
+              </>
+            ) : composeMode ? (
+              <div className="space-y-3 overflow-y-auto pr-1">
+                {selectableUsers.length > 0 ? (
+                  selectableUsers.map((user) => (
+                    <button
+                      key={user.id}
+                      onClick={() => void startConversation(user.id)}
+                      className="flex w-full items-center gap-3 rounded-3xl border border-border bg-background p-4 text-left transition hover:bg-muted/40"
+                    >
+                      <UserAvatar user={{ id: user.id, name: user.full_name || user.username, username: user.username, avatar_url: user.avatar_url }} size="md" ring />
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-semibold text-foreground">{user.full_name || 'Zivona User'}</p>
+                        <p className="truncate text-xs text-muted-foreground">@{user.username || 'user'}</p>
                       </div>
-                    )}
-                    <span className={`absolute bottom-0 right-0 h-3.5 w-3.5 rounded-full border-2 border-zinc-950 ${dotClass}`} />
+                      <Button variant="outline" className="rounded-full">Start chat</Button>
+                    </button>
+                  ))
+                ) : (
+                  <div className="rounded-3xl border border-dashed border-border bg-background/60 p-8 text-center text-sm text-muted-foreground">
+                    No other profiles available right now.
                   </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
-                      <p className="truncate text-sm font-semibold text-white">{otherUser?.full_name || 'Zivona User'}</p>
-                      <span className="text-xs text-zinc-500">@{otherUser?.username || 'zivona'}</span>
-                    </div>
-                    <p className="truncate text-sm text-zinc-500">{convo.last_message || 'No messages yet'}</p>
-                    <p className="mt-1 text-xs text-zinc-500">{statusLabel}</p>
-                  </div>
-                  <div className="flex flex-col items-end gap-1 text-xs text-zinc-500">
-                    <span className="whitespace-nowrap">
-                      {convo.last_message_at ? new Date(convo.last_message_at).toLocaleDateString() : ''}
-                    </span>
-                    {isOnline ? <span className="text-emerald-400">Online</span> : null}
-                  </div>
-                </button>
-              )
-            })}
-            </div>
-          </div>
-        )}
+                )}
+              </div>
+            ) : (
+              <div className="flex flex-1 flex-col items-center justify-center gap-4 text-center">
+                <div className="flex size-16 items-center justify-center rounded-full bg-primary/10 text-primary">
+                  <MessageCircle className="size-8" />
+                </div>
+                <div>
+                  <h2 className="text-xl font-semibold tracking-tight">Start Conversation</h2>
+                  <p className="mt-2 max-w-md text-sm text-muted-foreground">Pick an existing conversation or start a new one with a real profile from the database.</p>
+                </div>
+                <Button className="rounded-full" onClick={() => setComposeMode(true)}>
+                  <Plus className="size-4" />
+                  New chat
+                </Button>
+              </div>
+            )}
+          </CardContent>
+        </Card>
       </div>
     </div>
   )

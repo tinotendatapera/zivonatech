@@ -260,7 +260,7 @@ export async function POST(
       type: 'message',
       title: 'New message',
       body: 'You received a new message.',
-      payload: { conversationId: resolvedParams.conversationId },
+      payload: { actorId: senderProfileId, conversationId: resolvedParams.conversationId },
     }).catch(() => undefined)
   }
 

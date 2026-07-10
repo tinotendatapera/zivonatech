@@ -40,21 +40,11 @@ export async function GET(request: Request) {
           .sort((left, right) => right.score - left.score)
           .slice(0, 8)
 
-        if (topics.length > 0) {
-          return NextResponse.json({ topics, windowHours: lookbackHours })
-        }
+        return NextResponse.json({ topics, windowHours: lookbackHours })
       }
     }
 
-    return NextResponse.json({
-      topics: [
-        { tag: '#design', posts: '24 posts', score: 24 },
-        { tag: '#fashion', posts: '18 posts', score: 18 },
-        { tag: '#ai', posts: '15 posts', score: 15 },
-        { tag: '#food', posts: '11 posts', score: 11 },
-      ],
-      windowHours: lookbackHours,
-    })
+    return NextResponse.json({ topics: [], windowHours: lookbackHours })
   } catch (error: any) {
     return NextResponse.json({ topics: [], error: error?.message || 'Unable to load trending topics' }, { status: 500 })
   }
