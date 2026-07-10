@@ -18,6 +18,11 @@ export function AppSidebar() {
   const { open } = useCompose()
   const { user, signOut } = useAuth()
   const items = [...mainNav, settingsNav]
+  const displayName =
+    (user?.userMetadata?.full_name && String(user.userMetadata.full_name)) ||
+    (user?.userMetadata?.name && String(user.userMetadata.name)) ||
+    "Signed in user"
+  const avatarUrl = user?.userMetadata?.avatar_url ? String(user.userMetadata.avatar_url) : undefined
 
   return (
     <aside className="sticky top-0 hidden h-dvh w-64 shrink-0 flex-col border-r border-border bg-sidebar/95 px-4 py-5 shadow-[inset_-1px_0_0_rgba(255,255,255,0.04)] lg:flex">
@@ -62,13 +67,14 @@ export function AppSidebar() {
         </Button>
       </nav>
 
-      <div className="mt-4 flex items-center gap-3 rounded-xl border border-border p-2.5">
-        <UserAvatar user={user ? { id: user.id, name: user.email || 'User', username: user.email || 'user', color: 'from-violet-600 to-blue-600' } : undefined} size="sm" />
+      <div className="mt-4 flex items-center gap-3 rounded-2xl border border-border bg-background/60 p-3 shadow-sm backdrop-blur">
+        <UserAvatar
+          user={user ? { id: user.id, name: displayName, username: user?.email || 'user', avatar_url: avatarUrl, color: 'from-violet-600 to-blue-600' } : undefined}
+          size="sm"
+        />
         <div className="min-w-0 flex-1">
-          <div className="truncate text-sm font-semibold">{user?.email || 'User'}</div>
-          <div className="truncate text-xs text-muted-foreground">
-            {user ? "Signed in" : "Sign in"}
-          </div>
+          <div className="truncate text-sm font-semibold">{displayName}</div>
+          <div className="truncate text-xs text-muted-foreground">{user ? 'Signed in' : 'Sign in'}</div>
         </div>
         <button
           type="button"

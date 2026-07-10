@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useEffect, useState, useRef, useCallback, type CSSProperties } from 'react'
+import { useEffect, useState, useRef, type CSSProperties } from 'react'
 import { supabase } from '@/supabase'
 import { useRouter } from 'next/navigation'
 import ImageUploader from '@/components/ImageUploader'
@@ -10,8 +10,9 @@ import VideoPlayer from '@/components/VideoPlayer'
 import { ReactionsPicker } from '@/components/ReactionsPicker'
 import { Poll } from '@/lib/dynamic-imports'
 import { toast } from 'sonner'
+import { UserAvatar } from '@/components/user-avatar'
 // virtualized rendering removed due to runtime error; fallback to simple mapping
-import { Heart, MessageCircle, Share2, Bookmark, MoreHorizontal, Image, Video, Send, X, Eye, Pencil, Trash2, Loader, Repeat2 } from 'lucide-react'
+import { Heart, MessageCircle, Share2, Bookmark, MoreHorizontal, Image, Video, X, Eye, Pencil, Trash2, Loader, Repeat2, Search, TrendingUp, Sparkles, UserPlus, BarChart3, Smile, MapPin } from 'lucide-react'
 import { paginateFeedPosts, rankFeedPosts } from '@/lib/feed-ranking'
 
 interface Post {
@@ -76,6 +77,7 @@ export default function FeedPage() {
   const [loading, setLoading] = useState(true)
   const [newPost, setNewPost] = useState('')
   const [postImages, setPostImages] = useState<string[]>([])
+  const [showComposerMedia, setShowComposerMedia] = useState(false)
   const [posting, setPosting] = useState(false)
   const [user, setUser] = useState<any>(null)
   const [postError, setPostError] = useState<string | null>(null)
@@ -90,10 +92,6 @@ export default function FeedPage() {
   const [commentError, setCommentError] = useState<string | null>(null)
   const [commentsByPost, setCommentsByPost] = useState<Record<string, Comment[]>>({})
   const [commentsLoading, setCommentsLoading] = useState<Record<string, boolean>>({})
-  const [messageDrafts, setMessageDrafts] = useState<Record<string, string>>({})
-  const [messagingPostId, setMessagingPostId] = useState<string | null>(null)
-  const [messaging, setMessaging] = useState(false)
-  const [messageError, setMessageError] = useState<string | null>(null)
   const [editingPostId, setEditingPostId] = useState<string | null>(null)
   const [editingPostContent, setEditingPostContent] = useState('')
   const [editingCommentId, setEditingCommentId] = useState<string | null>(null)
@@ -348,6 +346,7 @@ export default function FeedPage() {
 
         setNewPost('')
         setPostImages([])
+        setShowComposerMedia(false)
         await fetchPosts()
       } catch (error: any) {
         setPostError(error.message || 'Unable to create post')
@@ -806,58 +805,6 @@ export default function FeedPage() {
     }
   }
 
-  async function handleMessage(postId: string, authorId: string) {
-    const content = (messageDrafts[postId] || '').trim()
-    if (!content) return
-
-    setMessaging(true)
-    setMessageError(null)
-
-    try {
-      const conversationRes = await fetch('/api/conversations', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ other_user_id: authorId })
-      })
-
-      if (!conversationRes.ok) {
-        console.error('Error opening conversation:', conversationRes.status, conversationRes.statusText)
-        const conversationError = await conversationRes.json().catch(() => null)
-        throw new Error(conversationError?.error || 'Unable to open conversation')
-      }
-
-      const conversationData = await conversationRes.json()
-      if (!conversationData.conversation_id) {
-        throw new Error(conversationData.error || 'Unable to open conversation')
-      }
-
-      const messageRes = await fetch(`/api/messages/${conversationData.conversation_id}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content })
-      })
-
-      if (!messageRes.ok) {
-        console.error('Error sending message:', messageRes.status, messageRes.statusText)
-        const messageError = await messageRes.json().catch(() => null)
-        throw new Error(messageError?.error || 'Unable to send message')
-      }
-
-      const messageData = await messageRes.json()
-      if (messageData.error) {
-        throw new Error(messageData.error || 'Unable to send message')
-      }
-
-      setMessageDrafts((prev) => ({ ...prev, [postId]: '' }))
-      setMessagingPostId(null)
-      router.push(`/messages/${conversationData.conversation_id}`)
-    } catch (error: any) {
-      setMessageError(error.message || 'Unable to send message')
-    } finally {
-      setMessaging(false)
-    }
-  }
-
   async function toggleComments(postId: string) {
     const isOpen = commentingPostId === postId
     setCommentingPostId(isOpen ? null : postId)
@@ -871,34 +818,20 @@ export default function FeedPage() {
     }
   }
 
-  async function handleSignOut() {
-    await supabase.auth.signOut()
-    router.push('/login')
+  function handleComposerImagesChange(images: string[]) {
+    setPostImages(images)
+    setShowComposerMedia(images.length > 0)
   }
 
-  async function handleMessageAuthor(authorId: string) {
-    if (!authorId) return
-
-    try {
-      const res = await fetch('/api/conversations', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ other_user_id: authorId })
-      })
-
-      if (!res.ok) {
-        console.error('Error opening conversation:', res.status, res.statusText)
-        const errorData = await res.json().catch(() => null)
-        throw new Error(errorData?.error || 'Unable to open conversation')
-      }
-
-      const data = await res.json()
-      if (data.conversation_id) {
-        router.push(`/messages/${data.conversation_id}`)
-      }
-    } catch (error) {
-      console.error('Error opening conversation:', error)
-    }
+  const composerUser = {
+    id: user?.id ?? '',
+    name:
+      (user?.userMetadata?.full_name && String(user.userMetadata.full_name)) ||
+      (user?.userMetadata?.name && String(user.userMetadata.name)) ||
+      'You',
+    username: (user?.userMetadata?.username && String(user.userMetadata.username)) || 'you',
+    avatar_url: user?.userMetadata?.avatar_url ? String(user.userMetadata.avatar_url) : null,
+    color: 'from-violet-600 to-blue-600',
   }
 
   function renderPostItem({ index, style }: { index: number; style: CSSProperties }) {
@@ -1016,11 +949,11 @@ export default function FeedPage() {
             )
           ) : null}
 
-          <div className="flex items-center gap-6 pt-3 border-t border-zinc-800 relative">
+          <div className="flex items-center gap-5 pt-3 border-t border-zinc-800 relative text-sm">
             <div className="relative">
               <button
                 onClick={() => setReactionsPickerOpen(reactionsPickerOpen === post.id ? null : post.id)}
-                className={`flex items-center gap-1.5 transition text-sm ${likedPostIds.has(post.id) ? 'text-red-400' : 'text-zinc-400 hover:text-red-400'}`}
+                className={`flex items-center gap-1 transition ${likedPostIds.has(post.id) ? 'text-red-400' : 'text-zinc-400 hover:text-red-400'}`}
                 aria-label={`React to post with emoji. Current reactions: ${post.likes_count}`}
                 aria-expanded={reactionsPickerOpen === post.id}
                 aria-pressed={likedPostIds.has(post.id)}
@@ -1036,29 +969,20 @@ export default function FeedPage() {
             </div>
             <button
               onClick={() => toggleComments(post.id)}
-              className="flex items-center gap-1.5 text-zinc-400 hover:text-blue-400 transition text-sm"
+              className="flex items-center gap-1 text-zinc-400 hover:text-blue-400 transition"
               aria-label={`View comments on post. ${post.comments_count} comments`}
               aria-expanded={threadPostId === post.id}
             >
               <MessageCircle size={16} />
               <span>{post.comments_count}</span>
             </button>
-            <div className="flex items-center gap-1.5 text-zinc-400 text-sm" aria-label={`Post views: ${post.views_count ?? 0}`}>
+            <div className="flex items-center gap-1 text-zinc-400" aria-label={`Post views: ${post.views_count ?? 0}`}>
               <Eye size={16} />
               <span>{post.views_count ?? 0}</span>
             </div>
             <button
-              onClick={() => setMessagingPostId(messagingPostId === post.id ? null : post.id)}
-              className="flex items-center gap-1.5 text-zinc-400 hover:text-purple-400 transition text-sm"
-              aria-label="Send a message to the post author"
-              aria-expanded={messagingPostId === post.id}
-            >
-              <MessageCircle size={16} />
-              <span>Message</span>
-            </button>
-            <button
               onClick={() => handleRepost(post.id)}
-              className={`flex items-center gap-1.5 text-sm transition ${repostedPostIds.has(post.id) ? 'text-green-400' : 'text-zinc-400 hover:text-green-400'}`}
+              className={`flex items-center gap-1 transition ${repostedPostIds.has(post.id) ? 'text-green-400' : 'text-zinc-400 hover:text-green-400'}`}
               aria-label={`Repost. ${post.reposts_count} reposts. ${repostedPostIds.has(post.id) ? 'Already reposted' : 'Not reposted'}`}
               aria-pressed={repostedPostIds.has(post.id)}
             >
@@ -1067,14 +991,14 @@ export default function FeedPage() {
             </button>
             <button
               onClick={() => void handleShare(post)}
-              className="flex items-center gap-1.5 text-zinc-400 hover:text-blue-400 transition text-sm"
+              className="flex items-center gap-1 text-zinc-400 hover:text-blue-400 transition"
               aria-label="Share this post"
             >
               <Share2 size={16} />
             </button>
             <button
               onClick={() => handleBookmark(post.id)}
-              className={`ml-auto flex items-center gap-1.5 text-sm transition ${bookmarkedPostIds.has(post.id) ? 'text-purple-400' : 'text-zinc-400 hover:text-purple-400'}`}
+              className={`ml-auto flex items-center gap-1 transition ${bookmarkedPostIds.has(post.id) ? 'text-purple-400' : 'text-zinc-400 hover:text-purple-400'}`}
             >
               <Bookmark size={16} />
             </button>
@@ -1259,262 +1183,331 @@ export default function FeedPage() {
               </div>
             </div>
           ) : null}
-          {messagingPostId === post.id ? (
-            <div className="mt-2 rounded-xl border border-zinc-800 bg-zinc-950/70 p-3">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-sm font-medium text-zinc-200">Message</span>
-                <button onClick={() => setMessagingPostId(null)} className="text-zinc-500 hover:text-white">
-                  <X size={16} />
-                </button>
-              </div>
-              <textarea
-                value={messageDrafts[post.id] || ''}
-                onChange={(e) => setMessageDrafts((prev) => ({ ...prev, [post.id]: e.target.value }))}
-                placeholder="Write a message..."
-                rows={3}
-                className="w-full rounded-lg border border-zinc-800 bg-black px-3 py-2 text-sm text-white placeholder-zinc-500 focus:outline-none"
-              />
-              <div className="mt-2 flex items-center justify-end gap-2">
-                <button
-                  onClick={() => setMessagingPostId(null)}
-                  className="rounded-full px-3 py-1.5 text-sm text-zinc-400 hover:text-white"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={() => handleMessage(post.id, post.user_id)}
-                  disabled={messaging || !messageDrafts[post.id]?.trim()}
-                  className="rounded-full bg-purple-600 px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-50"
-                >
-                  {messaging ? 'Sending...' : 'Send'}
-                </button>
-              </div>
-              {messageError ? <p className="mt-2 text-sm text-red-400">{messageError}</p> : null}
-            </div>
-          ) : null}
         </article>
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-black text-white">
-
-      {/* Top Nav */}
-      <nav 
-        className="fixed top-0 left-0 right-0 z-50 bg-black/80 backdrop-blur border-b border-zinc-800 px-4 py-3 flex items-center justify-between"
-        role="navigation"
-        aria-label="Main navigation"
-      >
-        <h1 className="text-xl font-bold text-purple-400">Zivona</h1>
-        <button
-          onClick={handleSignOut}
-          className="text-sm text-zinc-400 hover:text-white transition"
-          aria-label="Sign out from Zivona"
-        >
-          Sign out
-        </button>
-      </nav>
-
-      <main className="max-w-2xl mx-auto pt-20 pb-10 px-4" role="main">
-
-        {/* Create Post */}
-        <section 
-          className="bg-zinc-900 rounded-2xl border border-zinc-800 p-4 mb-6"
-          aria-label="Create new post"
-        >
-          <div className="flex gap-3">
-            <div className="w-10 h-10 rounded-full bg-purple-600 flex items-center justify-center text-sm font-bold flex-shrink-0">
-              {user?.email?.[0]?.toUpperCase() ?? 'Z'}
-            </div>
-            <div className="flex-1">
-              <textarea
-                value={newPost}
-                onChange={e => setNewPost(e.target.value)}
-                placeholder="What's on your mind?"
-                rows={3}
-                className="w-full bg-transparent text-white placeholder-zinc-500 resize-none focus:outline-none text-sm"
-              />
-              <div className="flex items-center justify-between mt-3 pt-3 border-t border-zinc-800">
-                <div className="flex gap-4">
-                  <button className="text-zinc-400 hover:text-purple-400 transition">
-                    <Image size={18} />
-                  </button>
-                  <button className="text-zinc-400 hover:text-purple-400 transition">
-                    <Video size={18} />
-                  </button>
-                </div>
-                <button
-                  onClick={handlePost}
-                  disabled={posting || (!newPost.trim() && postImages.length === 0)}
-                  className="px-4 py-1.5 rounded-full bg-purple-600 hover:bg-purple-700 text-white text-sm font-semibold transition disabled:opacity-50 flex items-center gap-2"
-                >
-                  <Send size={14} />
-                  {posting ? 'Posting...' : 'Post'}
-                </button>
-              </div>
-
-              <div className="mt-4">
-                <ImageUploader images={postImages} onChange={setPostImages} maxImages={4} />
-              </div>
-
-              {postError ? (
-                <div className="mt-3 rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-sm text-red-400">
-                  {postError}
-                </div>
-              ) : null}
-            </div>
-          </div>
-        </section>
-
-        {/* Posts Feed */}
-        <section 
-          className="space-y-4"
-          aria-label="Feed of posts from users you follow"
-          aria-live="polite"
-          aria-busy={loading || isLoadingMore}
-        >
-          {loading ? (
-            <>
-              {[1,2,3].map(i => (
-                <div key={i} className="bg-zinc-900 rounded-2xl border border-zinc-800 p-4 animate-pulse">
-                  <div className="flex gap-3">
-                    <div className="w-10 h-10 rounded-full bg-zinc-800" />
-                    <div className="flex-1 space-y-2">
-                      <div className="h-3 bg-zinc-800 rounded w-1/3" />
-                      <div className="h-3 bg-zinc-800 rounded w-2/3" />
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </>
-          ) : posts.length === 0 ? (
-          <div className="text-center py-20">
-            <p className="text-zinc-500 text-lg">No posts yet.</p>
-            <p className="text-zinc-600 text-sm mt-1">Be the first to post something!</p>
-          </div>
-        ) : (
-          <>
-            {threadPostId && threadCommentId ? (
-              <div className="mb-4 rounded-2xl border border-zinc-800 bg-zinc-950 p-4">
-                <div className="flex items-center justify-between mb-3">
-                  <div>
-                    <p className="text-sm font-semibold text-white">Reply thread</p>
-                    <p className="text-xs text-zinc-500">Viewing the thread for one comment on this post.</p>
+    <div className="w-full px-4 py-6 lg:px-6">
+      <div className="mx-auto grid w-full max-w-[980px] gap-6 xl:grid-cols-[minmax(0,600px)_320px] xl:justify-center">
+        <div className="min-w-0 space-y-4">
+          <section
+            className="rounded-3xl border border-border bg-background/80 p-4 shadow-sm"
+            aria-label="Create new post"
+          >
+            <div className="flex gap-3">
+              <UserAvatar user={composerUser} size="md" className="mt-0.5" />
+              <div className="min-w-0 flex-1">
+                <textarea
+                  value={newPost}
+                  onChange={(event) => setNewPost(event.target.value)}
+                  placeholder="What’s happening?"
+                  rows={3}
+                  className="w-full resize-none border-0 bg-transparent p-0 text-[15px] text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-0"
+                />
+                <div className="mt-3 flex flex-wrap items-center justify-between gap-3 border-t border-border pt-3">
+                  <div className="flex items-center gap-1 text-primary">
+                    <button
+                      type="button"
+                      onClick={() => setShowComposerMedia((prev) => !prev)}
+                      className="inline-flex h-9 w-9 items-center justify-center rounded-full text-muted-foreground transition hover:bg-primary/10 hover:text-primary"
+                      aria-label="Add image"
+                      aria-pressed={showComposerMedia || postImages.length > 0}
+                    >
+                      <Image className="size-4" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => toast('Video upload coming soon')}
+                      className="inline-flex h-9 w-9 items-center justify-center rounded-full text-muted-foreground transition hover:bg-primary/10 hover:text-primary"
+                      aria-label="Add video"
+                    >
+                      <Video className="size-4" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => toast('Polls coming soon')}
+                      className="inline-flex h-9 w-9 items-center justify-center rounded-full text-muted-foreground transition hover:bg-primary/10 hover:text-primary"
+                      aria-label="Create poll"
+                    >
+                      <BarChart3 className="size-4" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => toast('Emoji picker coming soon')}
+                      className="inline-flex h-9 w-9 items-center justify-center rounded-full text-muted-foreground transition hover:bg-primary/10 hover:text-primary"
+                      aria-label="Add emoji"
+                    >
+                      <Smile className="size-4" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => toast('Location tagging coming soon')}
+                      className="inline-flex h-9 w-9 items-center justify-center rounded-full text-muted-foreground transition hover:bg-primary/10 hover:text-primary"
+                      aria-label="Add location"
+                    >
+                      <MapPin className="size-4" />
+                    </button>
                   </div>
                   <button
-                    onClick={closeThreadView}
-                    className="text-sm text-zinc-400 hover:text-white"
+                    onClick={handlePost}
+                    disabled={posting || (!newPost.trim() && postImages.length === 0)}
+                    className="inline-flex h-9 items-center justify-center rounded-full bg-primary px-4 text-sm font-semibold text-primary-foreground transition hover:bg-primary/90 disabled:cursor-not-allowed disabled:bg-primary/40 disabled:text-primary-foreground/60"
                   >
-                    Close
+                    {posting ? 'Posting...' : 'Post'}
                   </button>
                 </div>
-                {(() => {
-                  const root = threadPostId && threadCommentId ? getThreadRootComment(threadPostId, threadCommentId) : null
-                  const replies = threadPostId && threadCommentId ? getCommentReplies(threadPostId, threadCommentId) : []
 
-                  if (!root) {
-                    return <p className="text-sm text-zinc-500">Loading thread...</p>
-                  }
+                {(showComposerMedia || postImages.length > 0) ? (
+                  <div className="mt-4 rounded-2xl border border-border bg-background/70 p-3">
+                    <ImageUploader images={postImages} onChange={handleComposerImagesChange} maxImages={4} />
+                  </div>
+                ) : null}
 
-                  return (
-                    <>
-                      <div className="rounded-xl border border-zinc-800 bg-black/80 p-4 mb-4">
-                        <div className="flex items-center gap-3 mb-2">
-                          <Link href={profileHref(root.profiles?.id)} className="flex items-center gap-3 transition hover:opacity-80">
-                            <div className="w-9 h-9 rounded-full bg-purple-600 flex items-center justify-center text-sm font-bold">
-                              {root.profiles?.full_name?.[0] || 'Z'}
-                            </div>
-                            <div>
-                              <p className="text-sm font-semibold text-zinc-100">{root.profiles?.full_name || 'Zivona User'}</p>
-                              <p className="text-xs text-zinc-500">@{root.profiles?.username} · {new Date(root.created_at).toLocaleDateString()}</p>
-                            </div>
-                          </Link>
-                        </div>
-                        <p className="text-sm text-zinc-200 leading-relaxed">{root.content}</p>
-                        <div className="mt-3 flex items-center gap-4 text-xs text-zinc-400">
-                          <button
-                            onClick={() => handleCommentLike(root.id)}
-                            className={`transition ${likedCommentIds.has(root.id) ? 'text-red-400' : 'hover:text-red-400'}`}
-                            aria-pressed={likedCommentIds.has(root.id)}
-                          >
-                            Like {root.likes_count ?? 0}
-                          </button>
-                          <button onClick={() => setReplyingCommentId(replyingCommentId === root.id ? null : root.id)} className="hover:text-blue-400 transition">Reply</button>
-                        </div>
+                {postError ? (
+                  <div className="mt-3 rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-sm text-red-400">
+                    {postError}
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          </section>
+
+          <section
+            className="space-y-4"
+            aria-label="Feed of posts from users you follow"
+            aria-live="polite"
+            aria-busy={loading || isLoadingMore}
+          >
+            {loading ? (
+              <>
+                {[1, 2, 3].map((i) => (
+                  <div key={i} className="rounded-3xl border border-border bg-background/80 p-4 shadow-sm animate-pulse">
+                    <div className="flex gap-3">
+                      <div className="size-10 rounded-full bg-muted" />
+                      <div className="flex-1 space-y-2">
+                        <div className="h-3 w-1/3 rounded bg-muted" />
+                        <div className="h-3 w-2/3 rounded bg-muted" />
                       </div>
-                      <div className="space-y-3 mb-4">
-                        {replies.map((reply) => (
-                          <div key={reply.id} className="rounded-xl border border-zinc-800 bg-zinc-950 p-4">
-                            <div className="flex items-center gap-3 mb-2">
-                              <Link href={profileHref(reply.profiles?.id)} className="flex items-center gap-3 transition hover:opacity-80">
-                                <div className="w-8 h-8 rounded-full bg-purple-600 flex items-center justify-center text-xs font-bold">
-                                  {reply.profiles?.full_name?.[0] || 'Z'}
+                    </div>
+                  </div>
+                ))}
+              </>
+            ) : posts.length === 0 ? (
+              <div className="rounded-3xl border border-dashed border-border bg-background/60 py-20 text-center">
+                <p className="text-lg text-muted-foreground">No posts yet.</p>
+                <p className="mt-1 text-sm text-muted-foreground/80">Be the first to post something.</p>
+              </div>
+            ) : (
+              <>
+                {threadPostId && threadCommentId ? (
+                  <div className="rounded-3xl border border-border bg-background/80 p-4 shadow-sm">
+                    <div className="mb-3 flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-semibold text-foreground">Reply thread</p>
+                        <p className="text-xs text-muted-foreground">Viewing the thread for one comment on this post.</p>
+                      </div>
+                      <button onClick={closeThreadView} className="text-sm text-muted-foreground transition hover:text-foreground">
+                        Close
+                      </button>
+                    </div>
+                    {(() => {
+                      const root = threadPostId && threadCommentId ? getThreadRootComment(threadPostId, threadCommentId) : null
+                      const replies = threadPostId && threadCommentId ? getCommentReplies(threadPostId, threadCommentId) : []
+
+                      if (!root) {
+                        return <p className="text-sm text-muted-foreground">Loading thread...</p>
+                      }
+
+                      return (
+                        <>
+                          <div className="mb-4 rounded-2xl border border-border bg-background/80 p-4">
+                            <div className="mb-2 flex items-center gap-3">
+                              <Link href={profileHref(root.profiles?.id)} className="flex items-center gap-3 transition hover:opacity-80">
+                                <div className="flex size-9 items-center justify-center rounded-full bg-primary text-sm font-bold text-primary-foreground">
+                                  {root.profiles?.full_name?.[0] || 'Z'}
                                 </div>
                                 <div>
-                                  <p className="text-sm font-semibold text-zinc-100">{reply.profiles?.full_name || 'Zivona User'}</p>
-                                  <p className="text-xs text-zinc-500">@{reply.profiles?.username} · {new Date(reply.created_at).toLocaleDateString()}</p>
+                                  <p className="text-sm font-semibold text-foreground">{root.profiles?.full_name || 'Zivona User'}</p>
+                                  <p className="text-xs text-muted-foreground">@{root.profiles?.username} · {new Date(root.created_at).toLocaleDateString()}</p>
                                 </div>
                               </Link>
                             </div>
-                            <p className="text-sm text-zinc-200 leading-relaxed">{reply.content}</p>
-                            <div className="mt-2 flex items-center gap-4 text-xs text-zinc-400">
+                            <p className="text-sm leading-relaxed text-foreground/90">{root.content}</p>
+                            <div className="mt-3 flex items-center gap-4 text-xs text-muted-foreground">
                               <button
-                                onClick={() => handleCommentLike(reply.id)}
-                                className={`transition ${likedCommentIds.has(reply.id) ? 'text-red-400' : 'hover:text-red-400'}`}
-                                aria-pressed={likedCommentIds.has(reply.id)}
+                                onClick={() => handleCommentLike(root.id)}
+                                className={`transition ${likedCommentIds.has(root.id) ? 'text-red-500' : 'hover:text-red-500'}`}
+                                aria-pressed={likedCommentIds.has(root.id)}
                               >
-                                Like {reply.likes_count ?? 0}
+                                Like {root.likes_count ?? 0}
+                              </button>
+                              <button onClick={() => setReplyingCommentId(replyingCommentId === root.id ? null : root.id)} className="transition hover:text-primary">
+                                Reply
                               </button>
                             </div>
                           </div>
-                        ))}
-                      </div>
-                      <div className="rounded-xl border border-zinc-800 bg-black p-4">
-                        <textarea
-                          value={commentReplyDrafts[root.id] || ''}
-                          onChange={(e) => setCommentReplyDrafts((prev) => ({ ...prev, [root.id]: e.target.value }))}
-                          placeholder="Write a reply..."
-                          rows={2}
-                          className="w-full rounded-lg border border-zinc-800 bg-black px-3 py-2 text-sm text-white placeholder-zinc-500 focus:outline-none"
-                        />
-                        <div className="mt-2 flex items-center justify-end gap-2">
-                          <button
-                            onClick={() => setReplyingCommentId(null)}
-                            className="rounded-full px-3 py-1.5 text-sm text-zinc-400 hover:text-white"
-                          >
-                            Cancel
-                          </button>
-                          <button
-                            onClick={() => handleReply(threadPostId!, root.id)}
-                            disabled={commenting || !commentReplyDrafts[root.id]?.trim()}
-                            className="rounded-full bg-purple-600 px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-50"
-                          >
-                            {commenting ? 'Replying...' : 'Reply'}
-                          </button>
-                        </div>
-                      </div>
-                    </>
-                  )
-                })()}
-              </div>
-            ) : null}
-            <div className="space-y-4">
-              {posts.map((_, idx) => renderPostItem({ index: idx, style: {} as any }))}
-              {isLoadingMore && (
-                <div className="flex justify-center py-8">
-                  <div className="flex items-center gap-2 text-zinc-400">
-                    <Loader size={18} className="animate-spin" />
-                    <span>Loading more posts...</span>
+                          <div className="mb-4 space-y-3">
+                            {replies.map((reply) => (
+                              <div key={reply.id} className="rounded-2xl border border-border bg-background/70 p-4">
+                                <div className="mb-2 flex items-center gap-3">
+                                  <Link href={profileHref(reply.profiles?.id)} className="flex items-center gap-3 transition hover:opacity-80">
+                                    <div className="flex size-8 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground">
+                                      {reply.profiles?.full_name?.[0] || 'Z'}
+                                    </div>
+                                    <div>
+                                      <p className="text-sm font-semibold text-foreground">{reply.profiles?.full_name || 'Zivona User'}</p>
+                                      <p className="text-xs text-muted-foreground">@{reply.profiles?.username} · {new Date(reply.created_at).toLocaleDateString()}</p>
+                                    </div>
+                                  </Link>
+                                </div>
+                                <p className="text-sm leading-relaxed text-foreground/90">{reply.content}</p>
+                                <div className="mt-2 flex items-center gap-4 text-xs text-muted-foreground">
+                                  <button
+                                    onClick={() => handleCommentLike(reply.id)}
+                                    className={`transition ${likedCommentIds.has(reply.id) ? 'text-red-500' : 'hover:text-red-500'}`}
+                                    aria-pressed={likedCommentIds.has(reply.id)}
+                                  >
+                                    Like {reply.likes_count ?? 0}
+                                  </button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                          <div className="rounded-2xl border border-border bg-background/80 p-4">
+                            <textarea
+                              value={commentReplyDrafts[root.id] || ''}
+                              onChange={(event) => setCommentReplyDrafts((prev) => ({ ...prev, [root.id]: event.target.value }))}
+                              placeholder="Write a reply..."
+                              rows={2}
+                              className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none"
+                            />
+                            <div className="mt-2 flex items-center justify-end gap-2">
+                              <button
+                                onClick={() => setReplyingCommentId(null)}
+                                className="rounded-full px-3 py-1.5 text-sm text-muted-foreground transition hover:text-foreground"
+                              >
+                                Cancel
+                              </button>
+                              <button
+                                onClick={() => handleReply(threadPostId!, root.id)}
+                                disabled={commenting || !commentReplyDrafts[root.id]?.trim()}
+                                className="rounded-full bg-primary px-3 py-1.5 text-sm font-semibold text-primary-foreground transition disabled:cursor-not-allowed disabled:opacity-50"
+                              >
+                                {commenting ? 'Replying...' : 'Reply'}
+                              </button>
+                            </div>
+                          </div>
+                        </>
+                      )
+                    })()}
                   </div>
+                ) : null}
+                <div className="space-y-4">
+                  {posts.map((_, idx) => renderPostItem({ index: idx, style: {} as any }))}
+                  {isLoadingMore ? (
+                    <div className="flex justify-center py-8">
+                      <div className="flex items-center gap-2 text-muted-foreground">
+                        <Loader size={18} className="animate-spin" />
+                        <span>Loading more posts...</span>
+                      </div>
+                    </div>
+                  ) : null}
+                  <div ref={sentinelRef} className="py-4 text-center text-muted-foreground" aria-hidden="true" />
                 </div>
-              )}
-              <div ref={sentinelRef} className="py-4 text-center text-zinc-500" aria-hidden="true" />
-            </div>
-          </>
-        )}
-        </section>
-      </main>
+              </>
+            )}
+          </section>
+        </div>
+
+        <aside className="hidden xl:block">
+          <div className="sticky top-6 space-y-4">
+            <section className="rounded-3xl border border-border bg-background/80 p-4 shadow-sm">
+              <div className="flex items-center gap-2 rounded-full border border-border bg-background px-3 py-2 text-muted-foreground">
+                <Search className="size-4 shrink-0" />
+                <input
+                  type="search"
+                  placeholder="Search Zivona"
+                  className="w-full bg-transparent text-sm text-foreground placeholder:text-muted-foreground focus:outline-none"
+                  aria-label="Search Zivona"
+                />
+              </div>
+            </section>
+
+            <section className="rounded-3xl border border-border bg-background/80 p-4 shadow-sm">
+              <div className="mb-3 flex items-center justify-between">
+                <div>
+                  <h2 className="text-sm font-semibold text-foreground">Trending</h2>
+                  <p className="text-xs text-muted-foreground">What people are talking about</p>
+                </div>
+                <TrendingUp className="size-4 text-primary" />
+              </div>
+              <div className="space-y-3">
+                {[
+                  { topic: '#ZivonaDesign', meta: '12.4K posts' },
+                  { topic: '#CreatorTools', meta: '8.1K posts' },
+                  { topic: '#BuildInPublic', meta: '5.6K posts' },
+                ].map((item) => (
+                  <div key={item.topic} className="rounded-2xl bg-muted/40 px-3 py-3">
+                    <p className="text-sm font-medium text-foreground">{item.topic}</p>
+                    <p className="text-xs text-muted-foreground">{item.meta}</p>
+                  </div>
+                ))}
+              </div>
+            </section>
+
+            <section className="rounded-3xl border border-border bg-background/80 p-4 shadow-sm">
+              <div className="mb-3 flex items-center justify-between">
+                <div>
+                  <h2 className="text-sm font-semibold text-foreground">Who to follow</h2>
+                  <p className="text-xs text-muted-foreground">Suggested accounts and updates</p>
+                </div>
+                <Sparkles className="size-4 text-primary" />
+              </div>
+              <div className="space-y-3">
+                {[
+                  { name: 'Zivona News', handle: '@zivonanews', note: 'Platform updates and announcements' },
+                  { name: 'Creator Circle', handle: '@creatorcircle', note: 'Product tips, launches, and stories' },
+                  { name: 'Local Pulse', handle: '@localpulse', note: 'Neighborhood news and events' },
+                ].map((item) => (
+                  <div key={item.handle} className="flex items-start gap-3 rounded-2xl bg-muted/40 p-3">
+                    <div className="flex size-9 items-center justify-center rounded-full bg-primary/15 text-primary">
+                      <UserPlus className="size-4" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium text-foreground">{item.name}</p>
+                      <p className="truncate text-xs text-muted-foreground">{item.handle}</p>
+                      <p className="mt-1 text-xs text-muted-foreground/90">{item.note}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
+
+            <section className="rounded-3xl border border-border bg-background/80 p-4 shadow-sm">
+              <div className="mb-3 flex items-center justify-between">
+                <div>
+                  <h2 className="text-sm font-semibold text-foreground">News</h2>
+                  <p className="text-xs text-muted-foreground">Quick reads from around Zivona</p>
+                </div>
+                <BarChart3 className="size-4 text-primary" />
+              </div>
+              <div className="space-y-3">
+                {[
+                  'A smoother mobile composer is rolling out this week.',
+                  'Trending tags now surface faster in the explore rail.',
+                  'New profile polish is coming to the sidebar card.',
+                ].map((headline) => (
+                  <div key={headline} className="rounded-2xl bg-muted/40 px-3 py-3 text-sm text-foreground/90">
+                    {headline}
+                  </div>
+                ))}
+              </div>
+            </section>
+          </div>
+        </aside>
+      </div>
     </div>
   )
 }
