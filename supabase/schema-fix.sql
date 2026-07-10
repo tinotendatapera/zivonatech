@@ -160,6 +160,50 @@ CREATE TABLE IF NOT EXISTS public.follows (
   UNIQUE (follower_id, followed_id)
 );
 
+ALTER TABLE public.follows ENABLE ROW LEVEL SECURITY;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_policies
+    WHERE schemaname = 'public'
+      AND tablename = 'follows'
+      AND policyname = 'Users can read their follow relationships'
+  ) THEN
+    CREATE POLICY "Users can read their follow relationships"
+      ON public.follows
+      FOR SELECT
+      USING (auth.uid() = follower_id OR auth.uid() = followed_id);
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_policies
+    WHERE schemaname = 'public'
+      AND tablename = 'follows'
+      AND policyname = 'Users can insert their own follow relationships'
+  ) THEN
+    CREATE POLICY "Users can insert their own follow relationships"
+      ON public.follows
+      FOR INSERT
+      WITH CHECK (auth.uid() = follower_id);
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_policies
+    WHERE schemaname = 'public'
+      AND tablename = 'follows'
+      AND policyname = 'Users can delete their own follow relationships'
+  ) THEN
+    CREATE POLICY "Users can delete their own follow relationships"
+      ON public.follows
+      FOR DELETE
+      USING (auth.uid() = follower_id);
+  END IF;
+END $$;
+
 CREATE TABLE IF NOT EXISTS public.user_blocks (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   blocker_id uuid NOT NULL,

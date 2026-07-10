@@ -33,6 +33,7 @@ export default function UserProfilePage({ params }: { params: Promise<{ userId: 
   const [reportReason, setReportReason] = useState('abuse')
   const [reportDescription, setReportDescription] = useState('')
   const [reportStatus, setReportStatus] = useState<string | null>(null)
+  const isOwnProfile = Boolean(user?.id && requestedUserId && user.id === requestedUserId)
 
   const profileUser = useMemo(() => {
     const resolvedName = displayName || 'User'
@@ -107,10 +108,14 @@ export default function UserProfilePage({ params }: { params: Promise<{ userId: 
 
         const postsRes = await fetch('/api/posts')
         if (postsRes.ok) {
-          const postsData = await postsRes.json()
-          if (Array.isArray(postsData)) {
-            setRecentPosts(postsData.slice(0, 3))
-          }
+          const postsData = await postsRes.json().catch(() => ({}))
+          const allPosts = Array.isArray(postsData.posts) ? postsData.posts : []
+          setRecentPosts(
+            allPosts
+              .filter((post: any) => String(post.user_id) === String(targetUserId))
+              .sort((left: any, right: any) => String(right.created_at || '').localeCompare(String(left.created_at || '')))
+              .slice(0, 3)
+          )
         }
       } catch {
         // ignore
@@ -224,10 +229,12 @@ export default function UserProfilePage({ params }: { params: Promise<{ userId: 
               </div>
             </div>
             <div className="flex flex-col items-end gap-2 sm:flex-row sm:items-center">
-              <Button className="rounded-full" onClick={handleToggleFollow}>
-                <UserRoundPlus className="size-4" />
-                {isFollowing ? 'Following' : 'Follow'}
-              </Button>
+              {!isOwnProfile ? (
+                <Button className="rounded-full" onClick={handleToggleFollow}>
+                  <UserRoundPlus className="size-4" />
+                  {isFollowing ? 'Following' : 'Follow'}
+                </Button>
+              ) : null}
               <Button className="rounded-full" variant="outline" onClick={handleBlockUser} disabled={blocking}>
                 {blocking ? 'Blocking...' : 'Block'}
               </Button>

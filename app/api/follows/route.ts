@@ -50,6 +50,20 @@ async function getCounts(client: any, profileId: string) {
   return { followers: Number(followersCount ?? 0), following: Number(followingCount ?? 0) }
 }
 
+async function syncProfileCounts(client: any, profileId: string) {
+  const counts = await getCounts(client, profileId)
+
+  await client
+    .from('profiles')
+    .update({
+      followers_count: counts.followers,
+      following_count: counts.following,
+    })
+    .eq('id', profileId)
+
+  return counts
+}
+
 export async function GET(request: Request) {
   try {
     const user = await getCurrentUser()
@@ -122,8 +136,12 @@ export async function POST(request: Request) {
       }).catch(() => undefined)
     }
 
-    const counts = await getCounts(supabaseAdmin, targetUserId)
-    return NextResponse.json({ ok: true, following, counts, targetUserId })
+    const [targetCounts, viewerCounts] = await Promise.all([
+      syncProfileCounts(supabaseAdmin, targetUserId),
+      syncProfileCounts(supabaseAdmin, user.id),
+    ])
+
+    return NextResponse.json({ ok: true, following, counts: targetCounts, targetUserId, viewerCounts })
   } catch (error: any) {
     return NextResponse.json({ error: error?.message || 'Unable to update follow state' }, { status: 500 })
   }

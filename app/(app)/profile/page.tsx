@@ -27,9 +27,9 @@ function ProfilePageContent() {
   const [location, setLocation] = useState('')
   
   const profileUser = useMemo(() => {
-    const resolvedName = displayName || (user?.userMetadata?.full_name ? String(user.userMetadata.full_name) : user?.email || 'User')
-    const resolvedUsername = username || (user?.userMetadata?.username ? String(user.userMetadata.username) : 'user')
-    const resolvedRole = role || (user?.userMetadata?.role ? String(user.userMetadata.role) : 'member')
+    const resolvedName = displayName || (user?.user_metadata?.full_name ? String(user.user_metadata.full_name) : user?.email || 'User')
+    const resolvedUsername = username || (user?.user_metadata?.username ? String(user.user_metadata.username) : 'user')
+    const resolvedRole = role || (user?.user_metadata?.role ? String(user.user_metadata.role) : 'member')
 
     return {
       name: resolvedName,
@@ -95,10 +95,14 @@ function ProfilePageContent() {
 
         const postsRes = await fetch('/api/posts')
         if (postsRes.ok) {
-          const postsData = await postsRes.json()
-          if (Array.isArray(postsData)) {
-            setRecentPosts(postsData.slice(0, 3))
-          }
+          const postsData = await postsRes.json().catch(() => ({}))
+          const allPosts = Array.isArray(postsData.posts) ? postsData.posts : []
+          setRecentPosts(
+            allPosts
+              .filter((post: any) => String(post.user_id) === String(targetUserId))
+              .sort((left: any, right: any) => String(right.created_at || '').localeCompare(String(left.created_at || '')))
+              .slice(0, 3)
+          )
         }
       } catch {
         // ignore
@@ -157,10 +161,12 @@ function ProfilePageContent() {
                 <p className="text-sm text-muted-foreground">@{profileUser.username}</p>
               </div>
             </div>
-            <Button className="rounded-full" onClick={handleToggleFollow}>
-              <UserRoundPlus className="size-4" />
-              {isFollowing ? 'Following' : 'Follow'}
-            </Button>
+            {user?.id && user.id !== requestedUserId ? (
+              <Button className="rounded-full" onClick={handleToggleFollow}>
+                <UserRoundPlus className="size-4" />
+                {isFollowing ? 'Following' : 'Follow'}
+              </Button>
+            ) : null}
           </div>
 
           <div className="mt-5 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">

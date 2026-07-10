@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 import { useEffect, useState, useRef, useCallback, type CSSProperties } from 'react'
 import { supabase } from '@/supabase'
 import { useRouter } from 'next/navigation'
@@ -8,6 +9,7 @@ import LazyImage from '@/components/LazyImage'
 import VideoPlayer from '@/components/VideoPlayer'
 import { ReactionsPicker } from '@/components/ReactionsPicker'
 import { Poll } from '@/lib/dynamic-imports'
+import { toast } from 'sonner'
 // virtualized rendering removed due to runtime error; fallback to simple mapping
 import { Heart, MessageCircle, Share2, Bookmark, MoreHorizontal, Image, Video, Send, X, Eye, Pencil, Trash2, Loader, Repeat2 } from 'lucide-react'
 import { paginateFeedPosts, rankFeedPosts } from '@/lib/feed-ranking'
@@ -27,6 +29,7 @@ interface Post {
   reposts_count: number
   created_at: string
   profiles: {
+    id: string
     username: string
     full_name: string
     avatar_url: string | null
@@ -98,6 +101,8 @@ export default function FeedPage() {
   const [menuPostId, setMenuPostId] = useState<string | null>(null)
   const [menuCommentId, setMenuCommentId] = useState<string | null>(null)
   const [bookmarkedPostIds, setBookmarkedPostIds] = useState<Set<string>>(new Set())
+  const [likedPostIds, setLikedPostIds] = useState<Set<string>>(new Set())
+  const [likedCommentIds, setLikedCommentIds] = useState<Set<string>>(new Set())
   const [repostedPostIds, setRepostedPostIds] = useState<Set<string>>(new Set())
   const [reactionsPickerOpen, setReactionsPickerOpen] = useState<string | null>(null)
   const [pollData, setPollData] = useState<Record<string, Poll>>({})
@@ -109,6 +114,10 @@ export default function FeedPage() {
   const sentinelRef = useRef<HTMLDivElement>(null)
   const currentUserIdRef = useRef<string | null>(null)
   const feedChannelRef = useRef<any>(null)
+
+  function profileHref(profileId?: string | null) {
+    return profileId ? `/profile/${profileId}` : '#'
+  }
 
   useEffect(() => {
     async function init() {
@@ -239,7 +248,9 @@ export default function FeedPage() {
       if (!res.ok) return
 
       const data = await res.json().catch(() => ({}))
-      const bookmarkIds = (data.bookmarks || []).map((bookmark: any) => bookmark.id).filter(Boolean)
+      const bookmarkIds = (data.bookmarks || [])
+        .map((bookmark: any) => bookmark.post_id ?? bookmark.id)
+        .filter(Boolean)
       setBookmarkedPostIds(new Set(bookmarkIds))
     } catch {
       // ignore bookmark loading failures
@@ -380,6 +391,32 @@ export default function FeedPage() {
     }
   }
 
+  async function handleShare(post: Post) {
+    try {
+      const shareUrl = new URL(window.location.href)
+      shareUrl.searchParams.set('post_id', post.id)
+
+      if (navigator.share) {
+        await navigator.share({
+          title: 'Zivona post',
+          text: post.content?.trim() ? post.content.trim() : 'Check out this post on Zivona',
+          url: shareUrl.toString(),
+        })
+        return
+      }
+
+      await navigator.clipboard.writeText(shareUrl.toString())
+      toast.success('Post link copied to clipboard')
+    } catch (error: any) {
+      if (error?.name === 'AbortError') {
+        return
+      }
+
+      console.error('Error sharing post:', error)
+      toast.error('Unable to share this post right now')
+    }
+  }
+
   async function handleReaction(postId: string, reactionType: string) {
     try {
       const res = await fetch('/api/reactions', {
@@ -459,9 +496,20 @@ export default function FeedPage() {
 
         return {
           ...post,
-          likes_count: Math.max(0, post.likes_count + (data.liked ? 1 : -1)),
+          likes_count: typeof data.likes_count === 'number'
+            ? data.likes_count
+            : Math.max(0, post.likes_count + (data.liked ? 1 : -1)),
         }
       }))
+      setLikedPostIds((prev) => {
+        const next = new Set(prev)
+        if (data.liked) {
+          next.add(postId)
+        } else {
+          next.delete(postId)
+        }
+        return next
+      })
     } catch (error: any) {
       setPostError(error.message || 'Unable to like post')
     }
@@ -487,11 +535,20 @@ export default function FeedPage() {
           Object.entries(prev).map(([postId, comments]) => [
             postId,
             comments.map((comment) => comment.id === commentId
-              ? { ...comment, likes_count: data.likes_count ?? (comment.likes_count ?? 0) + (data.liked ? 1 : -1) }
+              ? { ...comment, likes_count: typeof data.likes_count === 'number' ? data.likes_count : (comment.likes_count ?? 0) + (data.liked ? 1 : -1) }
               : comment
             )
           ])
         )
+      })
+      setLikedCommentIds((prev) => {
+        const next = new Set(prev)
+        if (data.liked) {
+          next.add(commentId)
+        } else {
+          next.delete(commentId)
+        }
+        return next
       })
     } catch (error: any) {
       setCommentError(error.message || 'Unable to like comment')
@@ -857,18 +914,20 @@ export default function FeedPage() {
           {/* Post Header */}
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-purple-600 flex items-center justify-center text-sm font-bold">
-                {post.profiles?.full_name?.[0] || 'Z'}
-              </div>
-              <div>
-                <p className="text-sm font-semibold text-white">
-                  {post.profiles?.full_name || 'Zivona User'}
-                  {post.profiles?.is_verified && (
-                    <span className="text-purple-400 text-xs">✓</span>
-                  )}
-                </p>
-                <span className="text-zinc-500 text-xs">@{post.profiles?.username} · {new Date(post.created_at).toLocaleDateString()}</span>
-              </div>
+              <Link href={profileHref(post.profiles?.id)} className="flex items-center gap-3 transition hover:opacity-80">
+                <div className="w-10 h-10 rounded-full bg-purple-600 flex items-center justify-center text-sm font-bold">
+                  {post.profiles?.full_name?.[0] || 'Z'}
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-white">
+                    {post.profiles?.full_name || 'Zivona User'}
+                    {post.profiles?.is_verified && (
+                      <span className="text-purple-400 text-xs">✓</span>
+                    )}
+                  </p>
+                  <span className="text-zinc-500 text-xs">@{post.profiles?.username} · {new Date(post.created_at).toLocaleDateString()}</span>
+                </div>
+              </Link>
             </div>
             {user?.id === post.user_id ? (
               <div className="relative">
@@ -961,9 +1020,10 @@ export default function FeedPage() {
             <div className="relative">
               <button
                 onClick={() => setReactionsPickerOpen(reactionsPickerOpen === post.id ? null : post.id)}
-                className="flex items-center gap-1.5 text-zinc-400 hover:text-red-400 transition text-sm"
+                className={`flex items-center gap-1.5 transition text-sm ${likedPostIds.has(post.id) ? 'text-red-400' : 'text-zinc-400 hover:text-red-400'}`}
                 aria-label={`React to post with emoji. Current reactions: ${post.likes_count}`}
                 aria-expanded={reactionsPickerOpen === post.id}
+                aria-pressed={likedPostIds.has(post.id)}
               >
                 <Heart size={16} />
                 <span>{post.likes_count}</span>
@@ -1006,6 +1066,7 @@ export default function FeedPage() {
               <span>{post.reposts_count}</span>
             </button>
             <button
+              onClick={() => void handleShare(post)}
               className="flex items-center gap-1.5 text-zinc-400 hover:text-blue-400 transition text-sm"
               aria-label="Share this post"
             >
@@ -1037,17 +1098,19 @@ export default function FeedPage() {
                   {(commentsByPost[post.id] || []).filter((comment) => !comment.parent_comment_id).map((comment) => (
                     <div key={comment.id} className="rounded-xl border border-zinc-800 bg-black/80 p-3">
                       <div className="flex items-center gap-2 mb-2">
-                        <div className="w-8 h-8 rounded-full bg-purple-600 flex items-center justify-center text-xs font-bold">
-                          {comment.profiles?.full_name?.[0] || 'Z'}
-                        </div>
-                        <div className="flex-1">
-                          <p className="text-sm font-semibold text-zinc-100">
-                            {comment.profiles?.full_name || 'Zivona User'}
-                          </p>
-                          <p className="text-xs text-zinc-500">
-                            @{comment.profiles?.username} · {new Date(comment.created_at).toLocaleDateString()}
-                          </p>
-                        </div>
+                        <Link href={profileHref(comment.profiles?.id)} className="flex flex-1 items-center gap-2 transition hover:opacity-80">
+                          <div className="w-8 h-8 rounded-full bg-purple-600 flex items-center justify-center text-xs font-bold">
+                            {comment.profiles?.full_name?.[0] || 'Z'}
+                          </div>
+                          <div className="flex-1">
+                            <p className="text-sm font-semibold text-zinc-100">
+                              {comment.profiles?.full_name || 'Zivona User'}
+                            </p>
+                            <p className="text-xs text-zinc-500">
+                              @{comment.profiles?.username} · {new Date(comment.created_at).toLocaleDateString()}
+                            </p>
+                          </div>
+                        </Link>
                         {user?.id === comment.user_id ? (
                           <div className="relative">
                             <button onClick={() => setMenuCommentId(menuCommentId === comment.id ? null : comment.id)} className="text-zinc-500 hover:text-white">
@@ -1093,7 +1156,11 @@ export default function FeedPage() {
                         <p className="text-sm text-zinc-200 leading-relaxed">{comment.content}</p>
                       )}
                       <div className="mt-3 flex items-center gap-4 text-xs text-zinc-400">
-                        <button onClick={() => handleCommentLike(comment.id)} className="hover:text-red-400 transition">
+                        <button
+                          onClick={() => handleCommentLike(comment.id)}
+                          className={`transition ${likedCommentIds.has(comment.id) ? 'text-red-400' : 'hover:text-red-400'}`}
+                          aria-pressed={likedCommentIds.has(comment.id)}
+                        >
                           Like {comment.likes_count ?? 0}
                         </button>
                         <button onClick={() => setReplyingCommentId(replyingCommentId === comment.id ? null : comment.id)} className="hover:text-blue-400 transition">
@@ -1107,21 +1174,27 @@ export default function FeedPage() {
                       {getCommentReplies(post.id, comment.id).map((reply) => (
                         <div key={reply.id} className="mt-3 rounded-xl border border-zinc-800 bg-zinc-950 p-3 pl-4">
                           <div className="flex items-center gap-2 mb-2">
-                            <div className="w-7 h-7 rounded-full bg-purple-600 flex items-center justify-center text-[10px] font-bold">
-                              {reply.profiles?.full_name?.[0] || 'Z'}
-                            </div>
-                            <div className="flex-1">
-                              <p className="text-sm font-semibold text-zinc-100">
-                                {reply.profiles?.full_name || 'Zivona User'}
-                              </p>
-                              <p className="text-xs text-zinc-500">
-                                @{reply.profiles?.username} · {new Date(reply.created_at).toLocaleDateString()}
-                              </p>
-                            </div>
+                            <Link href={profileHref(reply.profiles?.id)} className="flex flex-1 items-center gap-2 transition hover:opacity-80">
+                              <div className="w-7 h-7 rounded-full bg-purple-600 flex items-center justify-center text-[10px] font-bold">
+                                {reply.profiles?.full_name?.[0] || 'Z'}
+                              </div>
+                              <div className="flex-1">
+                                <p className="text-sm font-semibold text-zinc-100">
+                                  {reply.profiles?.full_name || 'Zivona User'}
+                                </p>
+                                <p className="text-xs text-zinc-500">
+                                  @{reply.profiles?.username} · {new Date(reply.created_at).toLocaleDateString()}
+                                </p>
+                              </div>
+                            </Link>
                           </div>
                           <p className="text-sm text-zinc-200 leading-relaxed">{reply.content}</p>
                           <div className="mt-2 flex items-center gap-4 text-xs text-zinc-400">
-                            <button onClick={() => handleCommentLike(reply.id)} className="hover:text-red-400 transition">
+                            <button
+                              onClick={() => handleCommentLike(reply.id)}
+                              className={`transition ${likedCommentIds.has(reply.id) ? 'text-red-400' : 'hover:text-red-400'}`}
+                              aria-pressed={likedCommentIds.has(reply.id)}
+                            >
                               Like {reply.likes_count ?? 0}
                             </button>
                           </div>
@@ -1348,17 +1421,25 @@ export default function FeedPage() {
                     <>
                       <div className="rounded-xl border border-zinc-800 bg-black/80 p-4 mb-4">
                         <div className="flex items-center gap-3 mb-2">
-                          <div className="w-9 h-9 rounded-full bg-purple-600 flex items-center justify-center text-sm font-bold">
-                            {root.profiles?.full_name?.[0] || 'Z'}
-                          </div>
-                          <div>
-                            <p className="text-sm font-semibold text-zinc-100">{root.profiles?.full_name || 'Zivona User'}</p>
-                            <p className="text-xs text-zinc-500">@{root.profiles?.username} · {new Date(root.created_at).toLocaleDateString()}</p>
-                          </div>
+                          <Link href={profileHref(root.profiles?.id)} className="flex items-center gap-3 transition hover:opacity-80">
+                            <div className="w-9 h-9 rounded-full bg-purple-600 flex items-center justify-center text-sm font-bold">
+                              {root.profiles?.full_name?.[0] || 'Z'}
+                            </div>
+                            <div>
+                              <p className="text-sm font-semibold text-zinc-100">{root.profiles?.full_name || 'Zivona User'}</p>
+                              <p className="text-xs text-zinc-500">@{root.profiles?.username} · {new Date(root.created_at).toLocaleDateString()}</p>
+                            </div>
+                          </Link>
                         </div>
                         <p className="text-sm text-zinc-200 leading-relaxed">{root.content}</p>
                         <div className="mt-3 flex items-center gap-4 text-xs text-zinc-400">
-                          <button onClick={() => handleCommentLike(root.id)} className="hover:text-red-400 transition">Like {root.likes_count ?? 0}</button>
+                          <button
+                            onClick={() => handleCommentLike(root.id)}
+                            className={`transition ${likedCommentIds.has(root.id) ? 'text-red-400' : 'hover:text-red-400'}`}
+                            aria-pressed={likedCommentIds.has(root.id)}
+                          >
+                            Like {root.likes_count ?? 0}
+                          </button>
                           <button onClick={() => setReplyingCommentId(replyingCommentId === root.id ? null : root.id)} className="hover:text-blue-400 transition">Reply</button>
                         </div>
                       </div>
@@ -1366,17 +1447,25 @@ export default function FeedPage() {
                         {replies.map((reply) => (
                           <div key={reply.id} className="rounded-xl border border-zinc-800 bg-zinc-950 p-4">
                             <div className="flex items-center gap-3 mb-2">
-                              <div className="w-8 h-8 rounded-full bg-purple-600 flex items-center justify-center text-xs font-bold">
-                                {reply.profiles?.full_name?.[0] || 'Z'}
-                              </div>
-                              <div>
-                                <p className="text-sm font-semibold text-zinc-100">{reply.profiles?.full_name || 'Zivona User'}</p>
-                                <p className="text-xs text-zinc-500">@{reply.profiles?.username} · {new Date(reply.created_at).toLocaleDateString()}</p>
-                              </div>
+                              <Link href={profileHref(reply.profiles?.id)} className="flex items-center gap-3 transition hover:opacity-80">
+                                <div className="w-8 h-8 rounded-full bg-purple-600 flex items-center justify-center text-xs font-bold">
+                                  {reply.profiles?.full_name?.[0] || 'Z'}
+                                </div>
+                                <div>
+                                  <p className="text-sm font-semibold text-zinc-100">{reply.profiles?.full_name || 'Zivona User'}</p>
+                                  <p className="text-xs text-zinc-500">@{reply.profiles?.username} · {new Date(reply.created_at).toLocaleDateString()}</p>
+                                </div>
+                              </Link>
                             </div>
                             <p className="text-sm text-zinc-200 leading-relaxed">{reply.content}</p>
                             <div className="mt-2 flex items-center gap-4 text-xs text-zinc-400">
-                              <button onClick={() => handleCommentLike(reply.id)} className="hover:text-red-400 transition">Like {reply.likes_count ?? 0}</button>
+                              <button
+                                onClick={() => handleCommentLike(reply.id)}
+                                className={`transition ${likedCommentIds.has(reply.id) ? 'text-red-400' : 'hover:text-red-400'}`}
+                                aria-pressed={likedCommentIds.has(reply.id)}
+                              >
+                                Like {reply.likes_count ?? 0}
+                              </button>
                             </div>
                           </div>
                         ))}
