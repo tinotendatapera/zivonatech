@@ -1,10 +1,3 @@
-import { promises as fs } from 'node:fs'
-import os from 'node:os'
-import path from 'node:path'
-import { spawn } from 'node:child_process'
-import sharp from 'sharp'
-import ffmpegStatic from 'ffmpeg-static'
-
 function getFileExtension(name: string, fallback = 'bin') {
   return (name.split('.').pop() || fallback).toLowerCase()
 }
@@ -27,6 +20,7 @@ async function uploadToStorage(supabase: any, bucket: string, storagePath: strin
 }
 
 async function processImageBuffer(buffer: Buffer, contentType: string) {
+  const sharp = (await import('sharp')).default
   const normalizedType = contentType.includes('png') ? 'image/png' : contentType.includes('webp') ? 'image/webp' : 'image/jpeg'
 
   try {
@@ -59,8 +53,16 @@ async function processImageBuffer(buffer: Buffer, contentType: string) {
 }
 
 async function processVideoBuffer(buffer: Buffer, fileName: string) {
-  const ffmpegBinary = ffmpegStatic || 'ffmpeg'
-  if (!ffmpegStatic) {
+  const [{ promises: fs }, os, path, childProcess, ffmpegStatic] = await Promise.all([
+    import('node:fs'),
+    import('node:os'),
+    import('node:path'),
+    import('node:child_process'),
+    import('ffmpeg-static'),
+  ])
+
+  const ffmpegBinary = ffmpegStatic.default || 'ffmpeg'
+  if (!ffmpegBinary) {
     return { buffer, contentType: 'video/mp4' }
   }
 
@@ -71,7 +73,7 @@ async function processVideoBuffer(buffer: Buffer, fileName: string) {
   await fs.writeFile(inputPath, buffer)
 
   await new Promise<void>((resolve, reject) => {
-    const ffmpeg = spawn(ffmpegBinary, [
+    const ffmpeg = childProcess.spawn(ffmpegBinary, [
       '-y',
       '-i', inputPath,
       '-c:v', 'libx264',
