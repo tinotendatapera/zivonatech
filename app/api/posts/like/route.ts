@@ -203,8 +203,8 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: countError.message }, { status: 500 })
       }
 
-      const fallbackCount = typeof targetData?.likes_count === 'number' ? targetData.likes_count : count ?? 0
-      return NextResponse.json({ liked: false, likes_count: fallbackCount })
+      const persistedCount = typeof count === 'number' ? count : (targetData?.likes_count ?? 0)
+      return NextResponse.json({ liked: false, likes_count: persistedCount })
     }
 
     const { error: insertError } = await dbClient
@@ -238,7 +238,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: countError.message }, { status: 500 })
     }
 
-    const fallbackCount = typeof targetData?.likes_count === 'number' ? targetData.likes_count : count ?? 0
+    const persistedCount = typeof count === 'number' ? count : (targetData?.likes_count ?? 0)
     const targetOwnerId = targetData?.user_id ?? targetData?.owner_id ?? null
     if (targetOwnerId && String(targetOwnerId) !== String(normalizedUserId)) {
       await createNotification({
@@ -249,7 +249,7 @@ export async function POST(request: Request) {
         payload: { actorId: normalizedUserId, targetType: comment_id ? 'comment' : 'post', targetId },
       }).catch(() => undefined)
     }
-    return NextResponse.json({ liked: true, likes_count: fallbackCount + (insertError ? 0 : 1) })
+    return NextResponse.json({ liked: true, likes_count: persistedCount })
   } catch (error: any) {
     return NextResponse.json({ error: error?.message || 'Unable to toggle like' }, { status: 500 })
   }

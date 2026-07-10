@@ -10,6 +10,7 @@ import { useAuth } from "@/components/auth/auth-state"
 // Current user data will be fetched via API
 import { UserAvatar } from "@/components/user-avatar"
 import { getStoredProfile, saveStoredProfile } from "@/lib/social-store"
+import { supabase } from "@/supabase"
 
 export default function EditProfilePage() {
   const { user } = useAuth()
@@ -84,55 +85,16 @@ export default function EditProfilePage() {
     void loadProfile()
   }, [user?.id])
 
-  async function uploadImage(file: File, type: 'avatar' | 'cover') {
-    const formData = new FormData()
-    formData.append('file', file)
-
-    const res = await fetch('/api/upload', {
-      method: 'POST',
-      body: formData,
-    })
-
-    let data: any = null
-    try {
-      data = await res.json()
-    } catch (error) {
-      console.error('Error parsing upload response:', error)
-    }
-
-    if (!res.ok || data?.error) {
-      throw new Error(data?.error || 'Upload failed')
-    }
-
-    if (type === 'avatar') {
-      setAvatarUrl(data.url)
-    } else {
-      setCoverUrl(data.url)
-    }
-  }
-
-  async function removeImage(type: 'avatar' | 'cover') {
-    if (type === 'avatar') {
-      setAvatarUrl(null)
-    } else {
-      setCoverUrl(null)
-    }
-  }
-
-  async function handleSave() {
-    if (!user?.id) return
-    setSaving(true)
-    setStatus(null)
-
-    const profilePayload = {
-      full_name: displayName,
-      username,
-      bio,
-      location,
-      role,
-      avatar_url: avatarUrl,
-      cover_url: coverUrl,
-    }
+  async function saveProfileToServer(profilePayload: {
+    full_name: string
+    username: string
+    bio: string
+    location: string
+    role: string
+    avatar_url: string | null
+    cover_url: string | null
+  }, options?: { successMessage?: string; errorMessage?: string }) {
+    if (!user?.id) return false
 
     saveStoredProfile(profilePayload, user?.id)
 
@@ -151,14 +113,116 @@ export default function EditProfilePage() {
       }
 
       if (!res.ok || data?.error) {
-        setStatus('Saved locally. Server sync needs a working Supabase session.')
-        return
+        setStatus(options?.errorMessage || 'Saved locally. Server sync needs a working Supabase session.')
+        return false
       }
 
       saveStoredProfile({ ...(profilePayload as any), ...(data?.profile || {}) }, user?.id)
-      setStatus('Profile updated successfully')
+      if (options?.successMessage) {
+        setStatus(options.successMessage)
+      }
+      return true
     } catch (error: any) {
-      setStatus(error.message || 'Saved locally. Please try again when the server is reachable.')
+      setStatus(options?.errorMessage || error.message || 'Saved locally. Please try again when the server is reachable.')
+      return false
+    }
+  }
+
+  async function uploadImage(file: File, type: 'avatar' | 'cover') {
+    const { data: { session } } = await supabase.auth.getSession()
+    const headers: HeadersInit = session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}
+    const formData = new FormData()
+    formData.append('file', file)
+
+    const res = await fetch('/api/upload', {
+      method: 'POST',
+      headers,
+      body: formData,
+    })
+
+    let data: any = null
+    try {
+      data = await res.json()
+    } catch (error) {
+      console.error('Error parsing upload response:', error)
+    }
+
+    if (!res.ok || data?.error) {
+      throw new Error(data?.error || 'Upload failed')
+    }
+
+    const nextAvatarUrl = type === 'avatar' ? data.url : avatarUrl
+    const nextCoverUrl = type === 'cover' ? data.url : coverUrl
+    const profilePayload = {
+      full_name: displayName,
+      username,
+      bio,
+      location,
+      role,
+      avatar_url: nextAvatarUrl,
+      cover_url: nextCoverUrl,
+    }
+
+    if (type === 'avatar') {
+      setAvatarUrl(nextAvatarUrl)
+    } else {
+      setCoverUrl(nextCoverUrl)
+    }
+
+    await saveProfileToServer(profilePayload, {
+      successMessage: type === 'avatar' ? 'Profile photo uploaded successfully' : 'Cover photo uploaded successfully',
+      errorMessage: 'Image uploaded locally, but profile sync needs a working Supabase session.',
+    })
+  }
+
+  async function removeImage(type: 'avatar' | 'cover') {
+    const nextAvatarUrl = type === 'avatar' ? null : avatarUrl
+    const nextCoverUrl = type === 'cover' ? null : coverUrl
+
+    if (type === 'avatar') {
+      setAvatarUrl(nextAvatarUrl)
+    } else {
+      setCoverUrl(nextCoverUrl)
+    }
+
+    await saveProfileToServer({
+      full_name: displayName,
+      username,
+      bio,
+      location,
+      role,
+      avatar_url: nextAvatarUrl,
+      cover_url: nextCoverUrl,
+    }, {
+      successMessage: type === 'avatar' ? 'Profile photo removed' : 'Cover photo removed',
+      errorMessage: 'Image removal was saved locally, but the server sync needs a working Supabase session.',
+    })
+  }
+
+  async function handleSave() {
+    if (!user?.id) return
+    setSaving(true)
+    setStatus(null)
+
+    const profilePayload = {
+      full_name: displayName,
+      username,
+      bio,
+      location,
+      role,
+      avatar_url: avatarUrl,
+      cover_url: coverUrl,
+    }
+
+    try {
+      const success = await saveProfileToServer(profilePayload, {
+        successMessage: 'Profile updated successfully',
+        errorMessage: 'Saved locally. Server sync needs a working Supabase session.',
+      })
+
+      if (!success) {
+        setStatus('Saved locally. Server sync needs a working Supabase session.')
+      }
     } finally {
       setSaving(false)
     }

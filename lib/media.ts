@@ -27,24 +27,34 @@ async function uploadToStorage(supabase: any, bucket: string, storagePath: strin
 }
 
 async function processImageBuffer(buffer: Buffer, contentType: string) {
-  const image = sharp(buffer)
-  const metadata = await image.metadata()
-  const targetWidth = metadata.width && metadata.width > 1600 ? 1600 : metadata.width || 1200
+  const normalizedType = contentType.includes('png') ? 'image/png' : contentType.includes('webp') ? 'image/webp' : 'image/jpeg'
 
-  const mainBuffer = await image
-    .resize({ width: targetWidth, withoutEnlargement: true, fit: 'inside' })
-    .jpeg({ quality: 82, progressive: true })
-    .toBuffer()
+  try {
+    const image = sharp(buffer)
+    const metadata = await image.metadata()
+    const targetWidth = metadata.width && metadata.width > 1600 ? 1600 : metadata.width || 1200
 
-  const thumbBuffer = await sharp(buffer)
-    .resize({ width: 480, withoutEnlargement: true, fit: 'inside' })
-    .jpeg({ quality: 72, progressive: true })
-    .toBuffer()
+    const mainBuffer = await image
+      .resize({ width: targetWidth, withoutEnlargement: true, fit: 'inside' })
+      .jpeg({ quality: 82, progressive: true })
+      .toBuffer()
 
-  return {
-    mainBuffer,
-    thumbBuffer,
-    contentType: contentType.includes('png') ? 'image/png' : 'image/jpeg',
+    const thumbBuffer = await sharp(buffer)
+      .resize({ width: 480, withoutEnlargement: true, fit: 'inside' })
+      .jpeg({ quality: 72, progressive: true })
+      .toBuffer()
+
+    return {
+      mainBuffer,
+      thumbBuffer,
+      contentType: normalizedType,
+    }
+  } catch {
+    return {
+      mainBuffer: buffer,
+      thumbBuffer: buffer,
+      contentType: normalizedType,
+    }
   }
 }
 

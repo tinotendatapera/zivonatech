@@ -49,6 +49,7 @@ export function ReactionsPicker({ onReact, isOpen, onClose }: ReactionsPickerPro
       {REACTION_OPTIONS.map((option) => (
         <button
           key={option.type}
+          type="button"
           onClick={() => {
             onReact(option.type)
             onClose()

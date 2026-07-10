@@ -103,6 +103,8 @@ export default function FeedPage() {
   const [likedCommentIds, setLikedCommentIds] = useState<Set<string>>(new Set())
   const [repostedPostIds, setRepostedPostIds] = useState<Set<string>>(new Set())
   const [reactionsPickerOpen, setReactionsPickerOpen] = useState<string | null>(null)
+  const [reactingPostIds, setReactingPostIds] = useState<Set<string>>(new Set())
+  const [likingPostIds, setLikingPostIds] = useState<Set<string>>(new Set())
   const [pollData, setPollData] = useState<Record<string, Poll>>({})
   const [votingPollIds, setVotingPollIds] = useState<Set<string>>(new Set())
   const [currentPage, setCurrentPage] = useState(1)
@@ -417,7 +419,10 @@ export default function FeedPage() {
   }
 
   async function handleReaction(postId: string, reactionType: string) {
+    if (reactingPostIds.has(postId)) return
+
     try {
+      setReactingPostIds((prev) => new Set([...prev, postId]))
       const res = await fetch('/api/reactions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -444,6 +449,12 @@ export default function FeedPage() {
       )
     } catch (error: any) {
       setPostError(error.message || 'Unable to react')
+    } finally {
+      setReactingPostIds((prev) => {
+        const next = new Set(prev)
+        next.delete(postId)
+        return next
+      })
     }
   }
 
@@ -476,7 +487,10 @@ export default function FeedPage() {
   }
 
   async function handleLike(postId: string) {
+    if (likingPostIds.has(postId)) return
+
     try {
+      setLikingPostIds((prev) => new Set([...prev, postId]))
       const res = await fetch('/api/posts/like', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -511,6 +525,12 @@ export default function FeedPage() {
       })
     } catch (error: any) {
       setPostError(error.message || 'Unable to like post')
+    } finally {
+      setLikingPostIds((prev) => {
+        const next = new Set(prev)
+        next.delete(postId)
+        return next
+      })
     }
   }
 
@@ -952,11 +972,13 @@ export default function FeedPage() {
           <div className="flex items-center gap-5 pt-3 border-t border-zinc-800 relative text-sm">
             <div className="relative">
               <button
+                type="button"
                 onClick={() => setReactionsPickerOpen(reactionsPickerOpen === post.id ? null : post.id)}
                 className={`flex items-center gap-1 transition ${likedPostIds.has(post.id) ? 'text-red-400' : 'text-zinc-400 hover:text-red-400'}`}
                 aria-label={`React to post with emoji. Current reactions: ${post.likes_count}`}
                 aria-expanded={reactionsPickerOpen === post.id}
                 aria-pressed={likedPostIds.has(post.id)}
+                disabled={reactingPostIds.has(post.id)}
               >
                 <Heart size={16} />
                 <span>{post.likes_count}</span>

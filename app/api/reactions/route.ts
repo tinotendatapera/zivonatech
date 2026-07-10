@@ -4,6 +4,7 @@ import { cookies } from 'next/headers'
 import { NextResponse } from 'next/server'
 import { OWNER_SESSION_COOKIE_NAME, parseOwnerSessionCookie, supabaseAdmin } from '../../../lib/supabase'
 import { checkRateLimit, buildSecurityContext, logSecurityEvent } from '../../../lib/security'
+import { resolveReactionAction, sumReactionCounts } from '../../../lib/engagement.mjs'
 
 function isUuid(value: string) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)
@@ -168,48 +169,43 @@ export async function POST(request: Request) {
       }
     }
 
-    // Check if reaction already exists
-    const { data: existingReaction } = await dbClient
+    const { data: existingReactions, error: existingReactionLookupError } = await dbClient
       .from('reactions')
-      .select('*')
+      .select('id, reaction_type')
       .eq('user_id', normalizedUserId)
-      .eq('reaction_type', reaction_type)
       .eq(post_id ? 'post_id' : 'comment_id', post_id || comment_id)
-      .maybeSingle()
+      .order('created_at', { ascending: false })
 
-    if (existingReaction) {
-      // Remove reaction
+    if (existingReactionLookupError) {
+      return NextResponse.json({ error: existingReactionLookupError.message || 'Failed to inspect existing reactions' }, { status: 500 })
+    }
+
+    const existingReactionType = existingReactions?.[0]?.reaction_type ?? null
+    const action = resolveReactionAction(existingReactionType, reaction_type)
+
+    if (action === 'remove') {
       const { error: deleteError } = await dbClient
         .from('reactions')
         .delete()
-        .eq('id', existingReaction.id)
+        .eq('user_id', normalizedUserId)
+        .eq(post_id ? 'post_id' : 'comment_id', post_id || comment_id)
 
       if (deleteError) {
         return NextResponse.json({ error: 'Failed to remove reaction' }, { status: 500 })
       }
+    } else if (action === 'replace') {
+      const reactionIds = (existingReactions || []).map((reaction: { id: string }) => reaction.id)
+      if (reactionIds.length > 0) {
+        const { error: deleteError } = await dbClient
+          .from('reactions')
+          .delete()
+          .in('id', reactionIds)
 
-      // Get updated reaction counts
-      const { data: reactionCounts, error: countError } = await dbClient
-        .from('reactions')
-        .select('reaction_type')
-        .eq(post_id ? 'post_id' : 'comment_id', post_id || comment_id)
-
-      const counts: Record<string, number> = {
-        like: 0,
-        love: 0,
-        haha: 0,
-        wow: 0,
-        sad: 0,
-        angry: 0,
+        if (deleteError) {
+          return NextResponse.json({ error: 'Failed to replace reaction' }, { status: 500 })
+        }
       }
 
-      reactionCounts?.forEach((r) => {
-        counts[r.reaction_type] = (counts[r.reaction_type] || 0) + 1
-      })
-
-      return NextResponse.json({ reacted: false, reactions: counts })
-    } else {
-      // Add reaction
       const { error: insertError } = await dbClient
         .from('reactions')
         .insert({
@@ -222,28 +218,72 @@ export async function POST(request: Request) {
       if (insertError) {
         return NextResponse.json({ error: 'Failed to add reaction' }, { status: 500 })
       }
+    } else {
+      const reactionIds = (existingReactions || []).map((reaction: { id: string }) => reaction.id)
+      if (reactionIds.length > 0) {
+        const { error: deleteError } = await dbClient
+          .from('reactions')
+          .delete()
+          .in('id', reactionIds)
 
-      // Get updated reaction counts
-      const { data: reactionCounts, error: countError } = await dbClient
-        .from('reactions')
-        .select('reaction_type')
-        .eq(post_id ? 'post_id' : 'comment_id', post_id || comment_id)
-
-      const counts: Record<string, number> = {
-        like: 0,
-        love: 0,
-        haha: 0,
-        wow: 0,
-        sad: 0,
-        angry: 0,
+        if (deleteError) {
+          return NextResponse.json({ error: 'Failed to clear existing reactions' }, { status: 500 })
+        }
       }
 
-      reactionCounts?.forEach((r) => {
-        counts[r.reaction_type] = (counts[r.reaction_type] || 0) + 1
-      })
+      const { error: insertError } = await dbClient
+        .from('reactions')
+        .insert({
+          user_id: normalizedUserId,
+          post_id: post_id || null,
+          comment_id: comment_id || null,
+          reaction_type,
+        })
 
-      return NextResponse.json({ reacted: true, reactions: counts })
+      if (insertError) {
+        return NextResponse.json({ error: 'Failed to add reaction' }, { status: 500 })
+      }
     }
+
+    const { data: reactionCounts, error: countError } = await dbClient
+      .from('reactions')
+      .select('reaction_type')
+      .eq(post_id ? 'post_id' : 'comment_id', post_id || comment_id)
+
+    if (countError) {
+      return NextResponse.json({ error: countError.message || 'Failed to count reactions' }, { status: 500 })
+    }
+
+    const counts: Record<string, number> = {
+      like: 0,
+      love: 0,
+      haha: 0,
+      wow: 0,
+      sad: 0,
+      angry: 0,
+    }
+
+    reactionCounts?.forEach((r: { reaction_type: string }) => {
+      counts[r.reaction_type] = (counts[r.reaction_type] || 0) + 1
+    })
+
+    const totalReactions = sumReactionCounts(counts)
+    const targetTable = post_id ? 'posts' : 'comments'
+    const targetId = post_id || comment_id
+    const { error: updateCountError } = await dbClient
+      .from(targetTable)
+      .update({ likes_count: totalReactions })
+      .eq('id', targetId)
+
+    if (updateCountError) {
+      console.error('Failed to sync reaction count', updateCountError)
+    }
+
+    return NextResponse.json({
+      reacted: action === 'add' || action === 'replace',
+      reactions: counts,
+      total_reactions: totalReactions,
+    })
   } catch (error: any) {
     console.error('Reaction error:', error)
     return NextResponse.json({ error: error.message || 'Failed to process reaction' }, { status: 500 })

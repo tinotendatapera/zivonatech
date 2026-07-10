@@ -2,6 +2,7 @@ import { createServerClient } from '@supabase/auth-helpers-nextjs'
 import { cookies } from 'next/headers'
 import { NextResponse } from 'next/server'
 import { processUploadMedia } from '../../../lib/media'
+import { getAuthenticatedUserFromRequest } from '../../../lib/auth-session'
 
 export const runtime = 'nodejs'
 
@@ -28,8 +29,8 @@ export async function POST(request: Request) {
   try {
     const supabase = await createSupabaseServerClient()
 
-    const { data: { user }, error: userError } = await supabase.auth.getUser()
-    if (userError || !user) {
+    const user = await getAuthenticatedUserFromRequest(request, supabase as any)
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 

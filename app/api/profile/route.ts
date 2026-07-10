@@ -4,6 +4,7 @@ import { NextResponse } from 'next/server'
 import { OWNER_SESSION_COOKIE_NAME, parseOwnerSessionCookie, supabaseAdmin } from '../../../lib/supabase'
 import { getCachedValue, invalidateCache, setCachedValue } from '../../../lib/cache'
 import { getBlockedUserIds, getFollowerCounts, getFollowedUserIds, isBlockedRelationship, sanitizeProfileForViewer } from '../../../lib/social-guards'
+import { getAuthenticatedUserFromRequest } from '../../../lib/auth-session'
 
 function sanitizeText(value?: string | null) {
   if (typeof value !== 'string') return null
@@ -152,8 +153,8 @@ export async function GET(request: Request) {
   let user = ownerSession?.user
 
   if (!user) {
-    const { data: { user: authUser }, error: userError } = await supabase.auth.getUser()
-    if (userError || !authUser) {
+    const authUser = await getAuthenticatedUserFromRequest(request, supabase as any)
+    if (!authUser) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
     user = authUser
@@ -250,8 +251,8 @@ export async function GET(request: Request) {
 export async function PUT(request: Request) {
   const supabase = await createSupabaseServerClient()
 
-  const { data: { user }, error: userError } = await supabase.auth.getUser()
-  if (userError || !user) {
+  const user = await getAuthenticatedUserFromRequest(request, supabase as any)
+  if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
